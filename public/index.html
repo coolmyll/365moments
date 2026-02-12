@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>365 Moments</title>
+    <link rel="stylesheet" href="/styles.css?v=12" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1a1a2e" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Loading Screen -->
+      <div id="loading-screen" class="screen active">
+        <div class="loading-container">
+          <img src="/icon.png" alt="365 Moments" class="loading-logo" />
+          <div class="loading-spinner"></div>
+          <p>Loading your moments...</p>
+        </div>
+      </div>
+
+      <!-- Auth Screen -->
+      <div id="auth-screen" class="screen">
+        <div class="auth-container">
+          <h1>📹 365 Moments</h1>
+          <p>Record 1 second every day. Create your year in 365 seconds.</p>
+          <a href="/auth/login" class="google-btn">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <path
+                fill="#4285F4"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              />
+            </svg>
+            Sign in with Google
+          </a>
+          <p class="privacy-note">
+            We only access your Google Drive to save your video moments.
+          </p>
+        </div>
+      </div>
+
+      <!-- Permission Error Screen -->
+      <div id="permission-error-screen" class="screen">
+        <div class="auth-container">
+          <h1>⚠️ Permission Required</h1>
+          <p>Google Drive access was not granted.</p>
+          <p>
+            Please log out and log in again, making sure to
+            <strong>check the Google Drive permission checkbox</strong> on
+            Google's consent screen.
+          </p>
+          <button
+            id="permission-logout-btn"
+            class="google-btn"
+            style="background: #e74c3c"
+          >
+            🚪 Log Out and Try Again
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Recording Screen -->
+      <div id="main-screen" class="screen">
+        <header>
+          <div class="user-info">
+            <img id="user-avatar" src="" alt="User" />
+            <span id="user-name"></span>
+          </div>
+
+          <!-- Streak Display in Header -->
+          <div id="streak-display" class="streak-display hidden">
+            <span class="streak-fire">🔥</span>
+            <span id="streak-count">0</span>
+            <span id="streak-message" class="streak-message"></span>
+          </div>
+
+          <div class="header-actions">
+            <button id="gallery-btn" class="icon-btn" title="View Gallery">
+              📁
+            </button>
+            <button id="signout-btn" class="icon-btn" title="Sign Out">
+              🚪
+            </button>
+          </div>
+        </header>
+
+        <main>
+          <div class="date-display">
+            <h2 id="current-date"></h2>
+            <p id="day-counter"></p>
+            <p id="recording-for-date" class="recording-for-date hidden"></p>
+          </div>
+
+          <div class="camera-container landscape">
+            <video id="camera-preview" autoplay muted playsinline></video>
+            <div id="camera-off-overlay" class="camera-off-overlay hidden">
+              <span class="camera-off-icon">✅</span>
+              <p>Already recorded for this day!</p>
+              <button id="go-to-gallery-btn" class="go-to-gallery-btn">
+                📁 View in Gallery
+              </button>
+            </div>
+            <div id="countdown" class="countdown hidden"></div>
+            <div id="recording-indicator" class="recording-indicator hidden">
+              <span class="rec-dot"></span> REC
+            </div>
+          </div>
+
+          <div class="controls">
+            <button
+              id="switch-camera-btn"
+              class="control-btn"
+              title="Switch Camera"
+            >
+              🔄
+            </button>
+            <button id="record-btn" class="record-btn" title="Record 1 Second">
+              <span class="record-inner"></span>
+            </button>
+            <button
+              id="orientation-btn"
+              class="control-btn"
+              title="Toggle Portrait/Landscape"
+            >
+              📱
+            </button>
+          </div>
+
+          <p class="upload-hint">
+            💡 Go to Gallery to upload for a specific day
+          </p>
+        </main>
+      </div>
+
+      <!-- Gallery Screen -->
+      <div id="gallery-screen" class="screen">
+        <header>
+          <button id="back-btn" class="icon-btn">⬅️</button>
+          <h2>Your Moments</h2>
+          <div class="header-actions">
+            <button
+              id="compilations-btn"
+              class="icon-btn"
+              title="View Compilations"
+            >
+              📼
+            </button>
+            <button id="compile-btn" class="icon-btn" title="Create Year Video">
+              🎬
+            </button>
+          </div>
+        </header>
+
+        <div class="gallery-stats">
+          <div class="stat">
+            <span id="total-clips">0</span>
+            <label>Clips</label>
+          </div>
+          <div class="stat">
+            <span id="current-streak">0</span>
+            <label>Day Streak</label>
+          </div>
+        </div>
+
+        <div class="calendar-view" id="calendar-view">
+          <!-- Calendar grid will be generated here -->
+        </div>
+      </div>
+
+      <!-- Modals - outside of screens to avoid visibility issues -->
+      <div id="video-preview-modal" class="modal hidden">
+        <div class="modal-content">
+          <button id="close-modal" class="close-btn">✕</button>
+          <video id="preview-video" controls></video>
+          <img id="preview-image" class="hidden" alt="Preview" />
+          <p id="preview-date"></p>
+        </div>
+      </div>
+
+      <!-- Day Options Modal -->
+      <div id="day-options-modal" class="modal hidden">
+        <div class="modal-content day-options-content">
+          <button id="close-day-options" class="close-btn">✕</button>
+          <h3 id="day-options-title">📅 January 1, 2025</h3>
+          <div id="day-options-buttons" class="day-options-buttons">
+            <!-- Buttons will be added dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Compile Modal -->
+      <div id="compile-modal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>🎬 Create Compilation</h3>
+            <button class="close-btn" onclick="app.closeCompileModal()">
+              ✕
+            </button>
+          </div>
+          <div class="compile-form">
+            <div class="form-group">
+              <label>Start Date:</label>
+              <input type="date" id="compile-start-date" />
+            </div>
+            <div class="form-group">
+              <label>End Date:</label>
+              <input type="date" id="compile-end-date" />
+            </div>
+            <p id="compile-clip-count" class="compile-info"></p>
+
+            <!-- Music Selection -->
+            <div class="music-section">
+              <label>🎵 Background Music (optional):</label>
+              <label class="file-input-label music-file-label">
+                <input
+                  type="file"
+                  id="music-file-input"
+                  accept="audio/mp3,audio/mpeg,.mp3"
+                />
+                <span id="music-file-name">Choose MP3 file...</span>
+              </label>
+              <div id="selected-music" class="selected-music hidden">
+                <div class="selected-music-info">
+                  <span class="selected-music-icon">🎵</span>
+                  <span id="selected-music-title"></span>
+                </div>
+                <button
+                  type="button"
+                  class="remove-music-btn"
+                  id="remove-music-btn"
+                >
+                  ✕
+                </button>
+              </div>
+              <audio id="music-preview-audio" class="hidden" controls></audio>
+            </div>
+
+            <button id="start-compile-btn" class="primary-btn">
+              🎬 Compile Video
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Uploading Progress Modal -->
+      <div id="uploading-modal" class="modal hidden">
+        <div class="modal-content uploading-modal-content">
+          <div class="uploading-animation">
+            <div class="spinner large"></div>
+          </div>
+          <h3>📤 Uploading to Google Drive</h3>
+          <p id="uploading-message">
+            Please wait while your moment is being saved...
+          </p>
+        </div>
+      </div>
+
+      <!-- Upload Modal -->
+      <div id="upload-modal" class="modal hidden">
+        <div class="modal-content upload-modal-content">
+          <button id="close-upload-modal" class="close-btn">✕</button>
+          <h3>📤 Upload Video</h3>
+          <p>
+            Select a video or image and choose which date it's for. Videos will
+            be trimmed to 1 second. Images will be shown for 1 second in
+            compilations.
+          </p>
+
+          <div class="upload-form">
+            <label class="file-input-label">
+              <input
+                type="file"
+                id="video-file-input"
+                accept="video/*,image/*"
+              />
+              <span id="file-name">Choose file...</span>
+            </label>
+
+            <div class="form-group">
+              <label>Date for this moment:</label>
+              <span id="video-date-display" class="date-display"></span>
+              <input type="hidden" id="video-date" />
+            </div>
+
+            <div class="form-group" id="trim-start-group">
+              <label for="trim-start">Start time (seconds):</label>
+              <input
+                type="number"
+                id="trim-start"
+                value="0"
+                min="0"
+                step="0.1"
+              />
+              <small>Which second to start the 1-second clip from</small>
+            </div>
+
+            <video id="upload-preview" controls class="hidden"></video>
+            <img id="upload-preview-image" class="hidden" alt="Preview" />
+
+            <button id="submit-upload" class="primary-btn" disabled>
+              Upload
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compilations Modal -->
+      <div id="compilations-modal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>📼 Your Compilations</h3>
+            <button class="close-btn" onclick="app.closeCompilationsModal()">
+              ✕
+            </button>
+          </div>
+          <div
+            id="compilation-status-container"
+            class="compilation-status-container"
+          ></div>
+          <div id="compilations-list" class="compilations-list">
+            <!-- Compilations will be loaded here -->
+          </div>
+          <div id="no-compilations" class="empty-state hidden">
+            <p>No compilations yet. Create your first year video!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/config.js?v=13"></script>
+    <script src="/js/api.js?v=13"></script>
+    <script src="/js/recorder.js?v=13"></script>
+    <script src="/js/app.js?v=13"></script>
+  </body>
+</html>

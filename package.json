@@ -1,0 +1,33 @@
+{
+    "name": "365moments",
+    "version": "1.0.0",
+    "description": "Record 1 second every day. Create your year in 365 seconds.",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "keywords": [
+        "video",
+        "diary",
+        "365",
+        "moments",
+        "google-drive"
+    ],
+    "author": "",
+    "license": "AGPL-3.0-only",
+    "dependencies": {
+        "connect-redis": "^9.0.0",
+        "dotenv": "^17.2.3",
+        "express": "^5.2.1",
+        "express-session": "^1.18.2",
+        "ffmpeg-static": "^5.3.0",
+        "googleapis": "^169.0.0",
+        "multer": "^2.0.2",
+        "redis": "^5.10.0",
+        "session-file-store": "^1.5.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}

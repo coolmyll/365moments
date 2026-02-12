@@ -1,0 +1,13 @@
+{
+    "watch": [
+        "server.js",
+        "compiler.js"
+    ],
+    "ignore": [
+        "temp/*",
+        "sessions/*",
+        "public/*",
+        "node_modules/*"
+    ],
+    "ext": "js"
+}
