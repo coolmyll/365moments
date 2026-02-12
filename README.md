@@ -111,6 +111,10 @@ If you miss the checkbox, you'll see a "Permission Required" screen - just log o
 ├── compiler.js         # FFmpeg video compilation service
 ├── package.json        # Dependencies
 ├── .env.example        # Environment template
+├── Dockerfile          # Docker image build
+├── docker-compose.yml  # Docker Compose setup
+├── nodemon.json        # Dev auto-reload config
+├── LICENSE             # AGPL-3.0 license
 ├── public/
 │   ├── index.html      # Main HTML
 │   ├── styles.css      # Styling
@@ -170,4 +174,4 @@ The compilation:
 
 ## License
 
-MIT License
+AGPL-3.0 - See [LICENSE](LICENSE) for details.
