@@ -405,15 +405,24 @@ app.get("/api/clips", requireAuth, async (req, res) => {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
     const folderId = await getOrCreateFolder(drive);
 
-    const response = await drive.files.list({
-      q: `'${folderId}' in parents and trashed=false`,
-      fields: "files(id, name, createdTime, size)",
-      orderBy: "name",
-    });
+    // Fetch ALL files using pagination (default pageSize is only 100)
+    let allFiles = [];
+    let pageToken = null;
+    do {
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed=false`,
+        fields: "nextPageToken, files(id, name, createdTime, size)",
+        orderBy: "name",
+        pageSize: 1000,
+        pageToken: pageToken || undefined,
+      });
+      allFiles = allFiles.concat(response.data.files);
+      pageToken = response.data.nextPageToken;
+    } while (pageToken);
 
     // Build a map of thumbnail files
     const thumbnailMap = new Map();
-    response.data.files.forEach((file) => {
+    allFiles.forEach((file) => {
       if (file.name.endsWith(".thumb.jpg")) {
         const date = file.name.replace(".thumb.jpg", "");
         thumbnailMap.set(date, file.id);
@@ -422,7 +431,7 @@ app.get("/api/clips", requireAuth, async (req, res) => {
 
     // Filter to only daily clips (YYYY-MM-DD.ext format), exclude compilations
     const datePattern = /^\d{4}-\d{2}-\d{2}\.(mp4|webm|jpg|jpeg|png)$/i;
-    const clips = response.data.files
+    const clips = allFiles
       .filter((file) => datePattern.test(file.name))
       .map((file) => {
         const dateMatch = file.name.match(/^(\d{4}-\d{2}-\d{2})/);
