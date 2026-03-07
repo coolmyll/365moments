@@ -7,6 +7,14 @@
 const NativeAuth = (() => {
   let _initialised = false;
 
+  function _getPlugins() {
+    const plugins = window.Capacitor?.Plugins || {};
+    return {
+      App: plugins.App,
+      Browser: plugins.Browser,
+    };
+  }
+
   async function _exchangeToken(token) {
     const response = await fetch(
       `/auth/token-exchange-native?token=${encodeURIComponent(token)}`,
@@ -31,12 +39,13 @@ const NativeAuth = (() => {
     if (!Platform.isNative()) return;
     _initialised = true;
 
-    const { App: CapApp } =
-      await import("https://cdn.jsdelivr.net/npm/@capacitor/app@latest/+esm");
-    const { Browser } =
-      await import("https://cdn.jsdelivr.net/npm/@capacitor/browser@latest/+esm");
+    const { App, Browser } = _getPlugins();
+    if (!App) {
+      console.error("[NativeAuth] Capacitor App plugin is unavailable");
+      return;
+    }
 
-    CapApp.addListener("appUrlOpen", async (event) => {
+    App.addListener("appUrlOpen", async (event) => {
       console.log("[NativeAuth] Deep link received:", event.url);
       try {
         const url = new URL(event.url);
@@ -44,7 +53,9 @@ const NativeAuth = (() => {
           const token = url.searchParams.get("token");
           if (token) {
             await _exchangeToken(token);
-            await Browser.close();
+            if (Browser?.close) {
+              await Browser.close();
+            }
             window.location.replace("/");
           }
         }
@@ -56,8 +67,10 @@ const NativeAuth = (() => {
 
   /** Start the login flow by opening the system browser. */
   async function login() {
-    const { Browser } =
-      await import("https://cdn.jsdelivr.net/npm/@capacitor/browser@latest/+esm");
+    const { Browser } = _getPlugins();
+    if (!Browser?.open) {
+      throw new Error("Capacitor Browser plugin is unavailable");
+    }
 
     // Determine the server URL.  In dev mode the Capacitor config
     // points the WebView at http://10.0.2.2:3000 but the system
