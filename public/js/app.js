@@ -21,6 +21,9 @@ class App {
     // Show loading screen
     this.showScreen("loading");
 
+    // Initialise native auth deep-link listener (no-op on web)
+    await NativeAuth.init();
+
     // Check authentication status
     const authStatus = await API.checkAuth();
 
@@ -31,6 +34,21 @@ class App {
       this.checkCompileStatus();
     } else {
       this.showScreen("auth");
+
+      // On native platforms, intercept the Google sign-in link so it opens
+      // the system browser (Chrome Custom Tab) instead of navigating in
+      // the WebView.
+      if (Platform.isNative()) {
+        const loginLink = document.querySelector(
+          '.google-btn[href="/auth/login"]',
+        );
+        if (loginLink) {
+          loginLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            NativeAuth.login();
+          });
+        }
+      }
     }
 
     // Set up event listeners
@@ -53,7 +71,7 @@ class App {
 
     // Permission error logout button
     const permissionLogoutBtn = document.getElementById(
-      "permission-logout-btn"
+      "permission-logout-btn",
     );
     if (permissionLogoutBtn) {
       permissionLogoutBtn.addEventListener("click", async () => {
@@ -206,10 +224,23 @@ class App {
       return;
     }
 
-    // Initialize video recorder
-    this.recorder = new VideoRecorder();
+    // Initialize video recorder — use native recorder on Capacitor, web otherwise
+    if (Platform.isNative()) {
+      this.recorder = new NativeRecorder();
+      console.log("Using NativeRecorder (Capacitor)");
+    } else {
+      this.recorder = new VideoRecorder();
+      console.log("Using VideoRecorder (Web)");
+    }
     await this.recorder.init();
     this.recorder.setClipsCache(this.clips);
+
+    // Initialize daily reminder notifications (native only)
+    await Notifications.init();
+    await Notifications.scheduleDaily(
+      Notifications.DEFAULT_HOUR,
+      Notifications.DEFAULT_MINUTE,
+    );
 
     // Check if recorded today
     this.checkTodayStatus();
@@ -250,11 +281,8 @@ class App {
     const now = new Date();
     document.getElementById("current-date").textContent =
       CONFIG.formatDateForDisplay(now);
-    document.getElementById(
-      "day-counter"
-    ).textContent = `Day ${CONFIG.getDayOfYear(
-      now
-    )} of ${CONFIG.getCurrentYear()}`;
+    document.getElementById("day-counter").textContent =
+      `Day ${CONFIG.getDayOfYear(now)} of ${CONFIG.getCurrentYear()}`;
   }
 
   // Update the recording indicator based on target date
@@ -449,14 +477,14 @@ class App {
           dayCell.appendChild(dayNum);
 
           dayCell.addEventListener("click", () =>
-            this.showDayOptions(dateString, clip)
+            this.showDayOptions(dateString, clip),
           );
         } else {
           dayCell.textContent = day;
           dayCell.classList.add("no-video");
           // Add click handler for past days without video
           dayCell.addEventListener("click", () =>
-            this.showDayOptions(dateString, null)
+            this.showDayOptions(dateString, null),
           );
         }
 
@@ -623,7 +651,7 @@ class App {
     if (this.clips.length < minClips) {
       showToast(
         `Record at least ${minClips} days before compiling. You have ${this.clips.length}.`,
-        "error"
+        "error",
       );
       return;
     }
@@ -786,7 +814,7 @@ class App {
           this.compileStatusInterval = null;
           showToast(
             `Compilation complete! ${status.clipCount} clips compiled.`,
-            "success"
+            "success",
           );
           await API.clearCompileStatus();
           await this.loadCompilationsList();
@@ -891,8 +919,8 @@ class App {
             <div class="compilation-name">${comp.name}</div>
             <div class="compilation-meta">
               ${new Date(comp.createdAt).toLocaleDateString("en-GB")} • ${
-            comp.size
-          }
+                comp.size
+              }
             </div>
           </div>
           <div class="compilation-actions">
@@ -904,7 +932,7 @@ class App {
             }')">🗑️</button>
           </div>
         </div>
-      `
+      `,
         )
         .join("");
     } catch (error) {
@@ -1055,7 +1083,7 @@ class App {
       const result = await API.uploadAndTrim(
         this.selectedFile,
         date,
-        startTime
+        startTime,
       );
 
       showToast(`Clip saved for ${date}! 🎉`, "success");

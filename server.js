@@ -191,6 +191,88 @@ app.get("/auth/callback", async (req, res) => {
   }
 });
 
+// ============ NATIVE APP AUTH (Capacitor) ============
+
+// Native app starts login by opening this URL in the system browser.
+// It uses a separate callback URL so the server knows to redirect back
+// to the app via deep link instead of to "/".
+app.get("/auth/login-native", (req, res) => {
+  const baseUrl = getBaseUrl(req);
+  const redirectUri = `${baseUrl}/auth/callback-native`;
+  const client = createOAuthClient(redirectUri);
+
+  const authUrl = client.generateAuthUrl({
+    access_type: "offline",
+    scope: SCOPES,
+    prompt: "consent",
+  });
+  res.redirect(authUrl);
+});
+
+// Native OAuth callback — same token exchange, but redirects to the app
+// deep link with the session ID so the WebView can resume authenticated.
+app.get("/auth/callback-native", async (req, res) => {
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).send("Missing authorization code");
+  }
+
+  try {
+    const baseUrl = getBaseUrl(req);
+    const redirectUri = `${baseUrl}/auth/callback-native`;
+    const client = createOAuthClient(redirectUri);
+
+    const { tokens } = await client.getToken(code);
+    client.setCredentials(tokens);
+
+    const oauth2 = google.oauth2({ version: "v2", auth: client });
+    const { data: user } = await oauth2.userinfo.get();
+
+    // Store in session
+    req.session.tokens = tokens;
+    req.session.user = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      picture: user.picture,
+    };
+
+    const storeType = redisStore ? "Redis" : "FileStore";
+    console.log(
+      `[AUTH-NATIVE] User ${user.email} logged in, session stored in ${storeType}`,
+    );
+
+    // Save the session before redirecting so the session ID is stable
+    req.session.save((err) => {
+      if (err) {
+        console.error("[AUTH-NATIVE] Session save error:", err);
+        return res.status(500).send("Session save failed");
+      }
+
+      // Redirect to the app via deep link, passing the session ID.
+      // The native app will set this as a cookie so the WebView can
+      // authenticate with the same session.
+      const sessionId = req.sessionID;
+      const deepLink = `com.coolmyll.moments365://auth/callback?sessionId=${encodeURIComponent(sessionId)}`;
+      console.log(`[AUTH-NATIVE] Redirecting to deep link for ${user.email}`);
+
+      // Send an HTML page that redirects — some browsers block direct
+      // redirects to custom schemes.
+      res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Redirecting...</title></head>
+<body>
+<p>Signing in... redirecting to 365 Moments.</p>
+<script>window.location.href = ${JSON.stringify(deepLink)};</script>
+<noscript><a href="${deepLink}">Click here to return to the app</a></noscript>
+</body></html>`);
+    });
+  } catch (error) {
+    console.error("Native auth callback error:", error);
+    res.status(500).send("Authentication failed. Please try again.");
+  }
+});
+
 // Logout
 app.post("/api/auth/logout", (req, res) => {
   req.session.destroy((err) => {
@@ -479,7 +561,49 @@ app.get("/api/thumbnails/:id", requireAuth, async (req, res) => {
   }
 });
 
-// Upload a clip (converts to MP4 for better compatibility)
+// Probe whether a file is already H.264 MP4 (skips FFmpeg conversion)
+function probeIsH264Mp4(filePath) {
+  const { spawnSync } = require("child_process");
+  let ffprobePath;
+  try {
+    // ffmpeg-static ships ffprobe alongside ffmpeg in newer versions
+    ffprobePath = require("ffmpeg-static").replace(/ffmpeg/, "ffprobe");
+    const fs = require("fs");
+    if (!fs.existsSync(ffprobePath)) ffprobePath = "ffprobe";
+  } catch {
+    ffprobePath = "ffprobe";
+  }
+
+  try {
+    const result = spawnSync(
+      ffprobePath,
+      [
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_streams",
+        "-show_format",
+        filePath,
+      ],
+      { timeout: 10000 },
+    );
+
+    if (result.status !== 0) return false;
+
+    const info = JSON.parse(result.stdout.toString());
+    const videoStream = (info.streams || []).find(
+      (s) => s.codec_type === "video",
+    );
+    const isH264 = videoStream && videoStream.codec_name === "h264";
+    const isMp4 = info.format && /mp4|mov/.test(info.format.format_name);
+    return isH264 && isMp4;
+  } catch {
+    return false;
+  }
+}
+
+// Upload a clip (skips conversion if already H.264 MP4, otherwise converts)
 app.post(
   "/api/clips",
   requireAuth,
@@ -512,64 +636,75 @@ app.post(
 
     // Use unique ID to prevent conflicts between concurrent uploads
     const uniqueId = crypto.randomUUID();
-    const inputPath = path.join(tempDir, `input-${uniqueId}.webm`);
+    const isUploadMp4 = req.file.mimetype === "video/mp4";
+    const inputExt = isUploadMp4 ? ".mp4" : ".webm";
+    const inputPath = path.join(tempDir, `input-${uniqueId}${inputExt}`);
     const outputPath = path.join(tempDir, `output-${uniqueId}.mp4`);
 
     try {
       // Write uploaded file to disk
       fs.writeFileSync(inputPath, req.file.buffer);
 
-      // Convert to MP4 using FFmpeg
-      await new Promise((resolve, reject) => {
-        const args = [
-          "-i",
-          inputPath,
-          "-c:v",
-          "libx264",
-          "-preset",
-          "fast",
-          "-crf",
-          "23",
-          "-c:a",
-          "aac",
-          "-b:a",
-          "128k",
-          "-movflags",
-          "+faststart",
-          "-y",
-          outputPath,
-        ];
+      // Check if already H.264 MP4 — skip conversion if so
+      const alreadyMp4 = isUploadMp4 && probeIsH264Mp4(inputPath);
 
-        console.log("FFmpeg convert command:", ffmpegPath, args.join(" "));
-        const ffmpegProcess = spawn(ffmpegPath, args);
+      const finalVideoPath = alreadyMp4 ? inputPath : outputPath;
 
-        ffmpegProcess.stderr.on("data", (data) => {
-          console.log("FFmpeg:", data.toString());
+      if (alreadyMp4) {
+        console.log("[UPLOAD] File is already H.264 MP4, skipping conversion");
+      } else {
+        // Convert to MP4 using FFmpeg
+        await new Promise((resolve, reject) => {
+          const args = [
+            "-i",
+            inputPath,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            "-y",
+            outputPath,
+          ];
+
+          console.log("FFmpeg convert command:", ffmpegPath, args.join(" "));
+          const ffmpegProcess = spawn(ffmpegPath, args);
+
+          ffmpegProcess.stderr.on("data", (data) => {
+            console.log("FFmpeg:", data.toString());
+          });
+
+          ffmpegProcess.on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`FFmpeg exited with code ${code}`));
+          });
+
+          ffmpegProcess.on("error", reject);
         });
-
-        ffmpegProcess.on("close", (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(`FFmpeg exited with code ${code}`));
-        });
-
-        ffmpegProcess.on("error", reject);
-      });
+      }
 
       const drive = google.drive({ version: "v3", auth: oauth2Client });
       const folderId = await getOrCreateFolder(drive);
 
-      // Use original filename but change extension to .mp4
+      // Use original filename but ensure .mp4 extension
       const originalName =
         req.body.fileName || `${new Date().toISOString().split("T")[0]}.webm`;
-      const fileName = originalName.replace(/\.webm$/, ".mp4");
+      const fileName = originalName.replace(/\.\w+$/, ".mp4");
       const dateStr = fileName.split(".")[0];
 
       // Generate thumbnail
       const thumbnailPath = path.join(tempDir, `thumb-${uniqueId}.jpg`);
-      await generateThumbnail(outputPath, thumbnailPath);
+      await generateThumbnail(finalVideoPath, thumbnailPath);
 
       // Upload video
-      const fileStream = fs.createReadStream(outputPath);
+      const fileStream = fs.createReadStream(finalVideoPath);
       const response = await drive.files.create({
         requestBody: {
           name: fileName,
@@ -591,8 +726,8 @@ app.post(
       );
 
       // Cleanup temp files
-      fs.unlinkSync(inputPath);
-      fs.unlinkSync(outputPath);
+      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+      if (!alreadyMp4 && fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
       if (fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath);
 
       res.json({

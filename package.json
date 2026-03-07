@@ -5,7 +5,11 @@
     "main": "server.js",
     "scripts": {
         "start": "node server.js",
-        "dev": "nodemon server.js"
+        "dev": "nodemon server.js",
+        "cap:init": "npx cap add android",
+        "cap:sync": "npx cap sync android",
+        "cap:open": "npx cap open android",
+        "cap:run": "npx cap run android"
     },
     "keywords": [
         "video",
@@ -17,6 +21,13 @@
     "author": "",
     "license": "AGPL-3.0-only",
     "dependencies": {
+        "@capacitor/android": "^8.2.0",
+        "@capacitor/browser": "^8.0.2",
+        "@capacitor/camera": "^8.0.2",
+        "@capacitor/cli": "^8.2.0",
+        "@capacitor/core": "^8.2.0",
+        "@capacitor/filesystem": "^8.1.2",
+        "@capacitor/local-notifications": "^8.0.2",
         "connect-redis": "^9.0.0",
         "dotenv": "^17.2.3",
         "express": "^5.2.1",
@@ -28,6 +39,7 @@
         "session-file-store": "^1.5.0"
     },
     "devDependencies": {
-        "nodemon": "^3.0.2"
+        "nodemon": "^3.0.2",
+        "typescript": "^5.9.3"
     }
 }
