@@ -7,6 +7,9 @@ const path = require("path");
 const crypto = require("crypto");
 const { google } = require("googleapis");
 
+const NATIVE_AUTH_COOKIE = "moments365_auth_from";
+const nativeAuthTokens = new Map();
+
 // Redis for production session storage
 let redisStore = null;
 let redisClient = null;
@@ -194,12 +197,18 @@ app.get("/auth/callback", async (req, res) => {
 // ============ NATIVE APP AUTH (Capacitor) ============
 
 // Native app starts login by opening this URL in the system browser.
-// It uses a separate callback URL so the server knows to redirect back
-// to the app via deep link instead of to "/".
+// A short-lived plain cookie marks the browser flow as app-originated so
+// the callback can redirect back via deep link with a one-time token.
 app.get("/auth/login-native", (req, res) => {
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/auth/callback-native`;
   const client = createOAuthClient(redirectUri);
+
+  res.cookie(NATIVE_AUTH_COOKIE, "app", {
+    maxAge: 5 * 60 * 1000,
+    httpOnly: true,
+    sameSite: "lax",
+  });
 
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
@@ -209,8 +218,9 @@ app.get("/auth/login-native", (req, res) => {
   res.redirect(authUrl);
 });
 
-// Native OAuth callback — same token exchange, but redirects to the app
-// deep link with the session ID so the WebView can resume authenticated.
+// Native OAuth callback — after browser-side login succeeds, issue a one-time
+// token and redirect to the app. The app then exchanges that token for its own
+// WebView session.
 app.get("/auth/callback-native", async (req, res) => {
   const { code } = req.query;
 
@@ -243,34 +253,72 @@ app.get("/auth/callback-native", async (req, res) => {
       `[AUTH-NATIVE] User ${user.email} logged in, session stored in ${storeType}`,
     );
 
-    // Save the session before redirecting so the session ID is stable
     req.session.save((err) => {
       if (err) {
         console.error("[AUTH-NATIVE] Session save error:", err);
         return res.status(500).send("Session save failed");
       }
 
-      // Redirect to the app via deep link, passing the session ID.
-      // The native app will set this as a cookie so the WebView can
-      // authenticate with the same session.
-      const sessionId = req.sessionID;
-      const deepLink = `com.coolmyll.moments365://auth/callback?sessionId=${encodeURIComponent(sessionId)}`;
-      console.log(`[AUTH-NATIVE] Redirecting to deep link for ${user.email}`);
+      const cookies = req.headers.cookie || "";
+      const isApp = cookies
+        .split(";")
+        .some((cookie) =>
+          cookie.trim().startsWith(`${NATIVE_AUTH_COOKIE}=app`),
+        );
 
-      // Send an HTML page that redirects — some browsers block direct
-      // redirects to custom schemes.
-      res.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Redirecting...</title></head>
-<body>
-<p>Signing in... redirecting to 365 Moments.</p>
-<script>window.location.href = ${JSON.stringify(deepLink)};</script>
-<noscript><a href="${deepLink}">Click here to return to the app</a></noscript>
-</body></html>`);
+      if (!isApp) {
+        return res.redirect("/");
+      }
+
+      res.clearCookie(NATIVE_AUTH_COOKIE);
+
+      const token = crypto.randomUUID();
+      nativeAuthTokens.set(token, {
+        tokens,
+        user: req.session.user,
+        expiresAt: Date.now() + 60 * 1000,
+      });
+
+      console.log(`[AUTH-NATIVE] Redirecting to deep link for ${user.email}`);
+      res.redirect(
+        `com.coolmyll.moments365://auth/callback?token=${encodeURIComponent(token)}`,
+      );
     });
   } catch (error) {
     console.error("Native auth callback error:", error);
     res.status(500).send("Authentication failed. Please try again.");
   }
+});
+
+app.get("/auth/token-exchange-native", (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ error: "Missing token" });
+  }
+
+  const entry = nativeAuthTokens.get(token);
+  if (!entry || Date.now() > entry.expiresAt) {
+    nativeAuthTokens.delete(token);
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  nativeAuthTokens.delete(token);
+
+  req.session.tokens = entry.tokens;
+  req.session.user = entry.user;
+
+  req.session.save((err) => {
+    if (err) {
+      console.error("[AUTH-NATIVE] Token exchange session error:", err);
+      return res.status(500).json({ error: "Session creation failed" });
+    }
+
+    console.log(
+      `[AUTH-NATIVE] Token exchange successful for ${entry.user.email}`,
+    );
+    res.json({ success: true, user: entry.user });
+  });
 });
 
 // Logout

@@ -5,10 +5,7 @@ const config: CapacitorConfig = {
     appName: "365 Moments",
     webDir: "public",
     server: {
-        // During development, point to your local server so API routes work.
-        // Comment this out and run `npx cap copy` for a fully offline-capable build.
-        url: "http://10.0.2.2:3000", // Android emulator → host machine
-        cleartext: true,
+        url: "https://365.chrismyll.gr",
     },
     plugins: {
         LocalNotifications: {
@@ -16,9 +13,7 @@ const config: CapacitorConfig = {
             iconColor: "#1a1a2e",
         },
     },
-    android: {
-        allowMixedContent: true, // dev only — remove for production
-    },
+    android: {},
 };
 
 export default config;

@@ -1,26 +1,25 @@
 /* native-auth.js — Auth bridge for Capacitor native app
  *
- * On native platforms the normal browser-based OAuth redirect doesn't work
- * inside the WebView. Instead we:
- *  1. Open /auth/login-native in the system browser (Chrome Custom Tab)
- *  2. The server does the OAuth dance and redirects back to the app via
- *     a deep link: com.coolmyll.moments365://auth/callback?sessionId=<sid>
- *  3. When the app receives the deep link it sets the session cookie so
- *     the WebView can make authenticated API requests.
+ * On native platforms the OAuth flow runs in the system browser.
+ * After Google login, the server redirects back via deep link with a
+ * one-time token. The app exchanges that token for a real WebView session.
  */
 const NativeAuth = (() => {
   let _initialised = false;
 
-  /** Set a cookie on the current domain (the Capacitor dev/prod server). */
-  function _setSessionCookie(sessionId) {
-    // The Express session middleware looks for the cookie named in
-    // server.js (default "connect.sid"). We percent-encode the value
-    // with the "s:" prefix that express-session expects for signed
-    // cookies — but since we're passing the raw session ID the server
-    // will still recognise it when it reads the store.  For simplicity
-    // we set the unsigned form: express-session also accepts the plain
-    // session ID as the cookie value (it just won't be signed).
-    document.cookie = `connect.sid=s%3A${encodeURIComponent(sessionId)}; path=/; SameSite=Lax`;
+  async function _exchangeToken(token) {
+    const response = await fetch(
+      `/auth/token-exchange-native?token=${encodeURIComponent(token)}`,
+      {
+        credentials: "include",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Token exchange failed (${response.status})`);
+    }
+
+    return response.json();
   }
 
   /**
@@ -32,18 +31,20 @@ const NativeAuth = (() => {
     if (!Platform.isNative()) return;
     _initialised = true;
 
-    // Listen for deep link returns (the "appUrlOpen" event).
     const { App: CapApp } =
       await import("https://cdn.jsdelivr.net/npm/@capacitor/app@latest/+esm");
-    CapApp.addListener("appUrlOpen", (event) => {
+    const { Browser } =
+      await import("https://cdn.jsdelivr.net/npm/@capacitor/browser@latest/+esm");
+
+    CapApp.addListener("appUrlOpen", async (event) => {
       console.log("[NativeAuth] Deep link received:", event.url);
       try {
         const url = new URL(event.url);
         if (url.host === "auth" && url.pathname === "/callback") {
-          const sessionId = url.searchParams.get("sessionId");
-          if (sessionId) {
-            _setSessionCookie(sessionId);
-            // Reload the app so it picks up the authenticated session
+          const token = url.searchParams.get("token");
+          if (token) {
+            await _exchangeToken(token);
+            await Browser.close();
             window.location.replace("/");
           }
         }
@@ -53,11 +54,7 @@ const NativeAuth = (() => {
     });
   }
 
-  /**
-   * Start the login flow by opening the system browser.
-   * Returns a promise that resolves when the browser is opened (the actual
-   * auth completion happens via the deep link listener above).
-   */
+  /** Start the login flow by opening the system browser. */
   async function login() {
     const { Browser } =
       await import("https://cdn.jsdelivr.net/npm/@capacitor/browser@latest/+esm");
