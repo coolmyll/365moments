@@ -17,7 +17,7 @@ const NativeAuth = (() => {
 
   async function _exchangeToken(token) {
     const response = await fetch(
-      `/auth/token-exchange-native?token=${encodeURIComponent(token)}`,
+      `/auth/token-exchange?token=${encodeURIComponent(token)}`,
       {
         credentials: "include",
       },
@@ -78,7 +78,7 @@ const NativeAuth = (() => {
     // or the real hostname.  We read the current origin which is
     // already correct from the WebView's perspective — the server
     // itself resolves the right base URL via getBaseUrl().
-    const loginUrl = `${window.location.origin}/auth/login-native`;
+    const loginUrl = `${window.location.origin}/auth/login?from=app`;
     console.log("[NativeAuth] Opening system browser:", loginUrl);
 
     await Browser.open({ url: loginUrl });
