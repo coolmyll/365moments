@@ -43,7 +43,7 @@ import java.util.concurrent.Executors;
 public class OneSecondRecorderPlugin extends Plugin {
 
     private static final String TAG = "OneSecondRecorder";
-    private static final int DEFAULT_DURATION_MS = 1200; // slightly over 1s for safety
+    private static final int DEFAULT_DURATION_MS = 1500; // slightly over 1s for safety
     private ExecutorService cameraExecutor;
 
     @Override

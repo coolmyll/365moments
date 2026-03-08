@@ -290,11 +290,6 @@ class NativeRecorder {
     this.countdownEl.classList.add("hidden");
 
     // ---- Native capture via custom OneSecondRecorder CameraX plugin ----
-    // Stop the preview stream so the native camera can take over the hardware.
-    // Hide the video element so the browser doesn't show a play button placeholder.
-    this.preview.style.visibility = "hidden";
-    this.stopCamera();
-
     this.isRecording = true;
     this.recordBtn.classList.add("recording");
     this.recordingIndicator.classList.remove("hidden");
@@ -303,8 +298,10 @@ class NativeRecorder {
       if (OneSecondRecorder) {
         // The plugin records exactly durationMs of video via CameraX and
         // auto-stops.  It returns { filePath, mimeType, durationMs }.
+        // Keep the WebView preview running — the last frame stays visible
+        // while CameraX takes over the camera hardware.
         const result = await OneSecondRecorder.record({
-          durationMs: CONFIG.VIDEO_DURATION_MS + 200, // slight buffer for CameraX startup
+          durationMs: CONFIG.VIDEO_DURATION_MS + 500, // buffer for CameraX startup latency
           useFrontCamera: this.currentFacingMode === "user",
         });
 
@@ -348,13 +345,12 @@ class NativeRecorder {
       console.error("Native recording failed:", error);
       showToast("Recording failed. Please try again.", "error");
       this.setRecordingEnabled(true);
-      // Resume preview
-      await this.startCamera();
     } finally {
       this.isRecording = false;
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");
-      this.preview.style.visibility = "";
+      // Restart WebView preview (CameraX may have taken over the camera)
+      await this.startCamera();
     }
   }
 

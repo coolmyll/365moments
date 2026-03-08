@@ -44,6 +44,9 @@ class App {
     // Set up event listeners
     this.setupEventListeners();
 
+    // Handle Android hardware back button
+    this.setupBackButton();
+
     // Update date display
     this.updateDateDisplay();
 
@@ -323,6 +326,41 @@ class App {
     });
     this.screens[screenName].classList.add("active");
     window.scrollTo(0, 0);
+  }
+
+  setupBackButton() {
+    const CapApp = window.Capacitor?.Plugins?.App;
+    if (!CapApp) return;
+
+    CapApp.addListener("backButton", async () => {
+      // Close any open modals first
+      const openModal = document.querySelector(".modal:not(.hidden)");
+      if (openModal) {
+        openModal.classList.add("hidden");
+        return;
+      }
+
+      // Close profile dropdown if open
+      const dropdown = document.querySelector(".profile-dropdown.show");
+      if (dropdown) {
+        dropdown.classList.remove("show");
+        return;
+      }
+
+      // Navigate back from gallery to main
+      if (this.screens.gallery.classList.contains("active")) {
+        this.showScreen("main");
+        if (this.recorder) {
+          await this.recorder.resumePreview();
+        }
+        return;
+      }
+
+      // On main screen, minimize the app
+      if (this.screens.main.classList.contains("active")) {
+        CapApp.minimizeApp();
+      }
+    });
   }
 
   updateDateDisplay() {
