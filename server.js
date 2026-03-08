@@ -159,7 +159,7 @@ app.get("/auth/login", (req, res) => {
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
-    state: req.query.from === "app" ? "app" : "web"
+    state: req.query.from === "app" ? "app" : "web",
   });
   res.redirect(authUrl);
 });
@@ -211,7 +211,7 @@ app.get("/auth/callback", async (req, res) => {
         .some((cookie) =>
           cookie.trim().startsWith(`${NATIVE_AUTH_COOKIE}=app`),
         );
-        
+
       const isApp = state === "app" || isAppCookie;
 
       if (!isApp) {
