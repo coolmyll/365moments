@@ -148,7 +148,7 @@ app.get("/auth/login", (req, res) => {
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
-    prompt: "consent",
+    prompt: "select_account",
     state: req.query.from === "app" ? "app" : "web",
   });
   res.redirect(authUrl);
@@ -195,6 +195,8 @@ app.get("/auth/callback", async (req, res) => {
         return res.redirect("/?error=auth_failed");
       }
 
+      console.log(`[AUTH] Callback state=${state}, user=${user.email}`);
+
       if (state !== "app") {
         return res.redirect("/");
       }
@@ -206,10 +208,25 @@ app.get("/auth/callback", async (req, res) => {
         expiresAt: Date.now() + 60 * 1000,
       });
 
-      console.log(`[AUTH] Redirecting to deep link for ${user.email}`);
-      res.redirect(
-        `moments365://auth/callback?token=${encodeURIComponent(token)}`,
-      );
+      const deepLink = `moments365://auth/callback?token=${encodeURIComponent(token)}`;
+      console.log(`[AUTH] Deep link: ${deepLink}`);
+
+      // Send a visible page so we can diagnose if this path is reached
+      res.send(`<!DOCTYPE html><html><head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>Redirecting to app...</title>
+        <style>body{font-family:sans-serif;text-align:center;padding:40px 20px;background:#1a1a2e;color:white;}
+        a{display:inline-block;margin:20px;padding:15px 30px;background:#e94560;color:white;text-decoration:none;border-radius:8px;font-size:18px;}
+        code{background:#333;padding:4px 8px;border-radius:4px;font-size:14px;word-break:break-all;}</style>
+      </head><body>
+        <h2>Login OK!</h2>
+        <p>State: <code>${state}</code></p>
+        <p>Deep link:</p>
+        <p><code>${deepLink}</code></p>
+        <a href="${deepLink}">Tap here to open the app</a>
+        <p style="margin-top:30px;font-size:12px;color:#888;">If tapping the link above doesn't open the app, the deep link isn't being handled by Android.</p>
+      </body></html>`);
     });
   } catch (error) {
     console.error("Auth callback error:", error);

@@ -79,14 +79,20 @@ const NativeAuth = (() => {
 
   /** Start the login flow by opening the system browser. */
   async function login() {
-    const { Browser } = _getPlugins();
-    if (!Browser?.open) {
-      throw new Error("Capacitor Browser plugin is unavailable");
-    }
-
     const loginUrl = `${window.location.origin}/auth/login?from=app`;
-    console.log("[NativeAuth] Opening system browser:", loginUrl);
-    await Browser.open({ url: loginUrl });
+    console.log("[NativeAuth] Opening login URL:", loginUrl);
+
+    // Try Browser plugin first (Chrome Custom Tab), fall back to window.open
+    const { Browser } = _getPlugins();
+    if (Browser?.open) {
+      try {
+        await Browser.open({ url: loginUrl, windowName: "_system" });
+        return;
+      } catch (e) {
+        console.warn("[NativeAuth] Browser.open failed, falling back:", e);
+      }
+    }
+    window.open(loginUrl, "_system");
   }
 
   return { init, login };
