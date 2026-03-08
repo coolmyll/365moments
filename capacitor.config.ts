@@ -8,6 +8,8 @@ const config: CapacitorConfig = {
         url: "https://365.chrismyll.gr",
     },
     plugins: {
+        CapacitorCookies: { enabled: true },
+        CapacitorHttp: { enabled: true },
         LocalNotifications: {
             smallIcon: "ic_stat_icon",
             iconColor: "#1a1a2e",

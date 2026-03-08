@@ -147,7 +147,6 @@ app.get("/auth/login", (req, res) => {
       maxAge: 5 * 60 * 1000,
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
     });
   }
 
@@ -159,14 +158,13 @@ app.get("/auth/login", (req, res) => {
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
-    state: req.query.from === "app" ? "app" : "web",
   });
   res.redirect(authUrl);
 });
 
 // OAuth callback
 app.get("/auth/callback", async (req, res) => {
-  const { code, state } = req.query;
+  const { code } = req.query;
 
   if (!code) {
     return res.redirect("/?error=no_code");
@@ -212,7 +210,7 @@ app.get("/auth/callback", async (req, res) => {
           cookie.trim().startsWith(`${NATIVE_AUTH_COOKIE}=app`),
         );
 
-      const isApp = state === "app" || isAppCookie;
+      const isApp = isAppCookie;
 
       if (!isApp) {
         return res.redirect("/");
@@ -221,7 +219,6 @@ app.get("/auth/callback", async (req, res) => {
       res.clearCookie(NATIVE_AUTH_COOKIE, {
         httpOnly: true,
         sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
       });
 
       const token = crypto.randomUUID();
@@ -232,34 +229,9 @@ app.get("/auth/callback", async (req, res) => {
       });
 
       console.log(`[AUTH] Redirecting to deep link for ${user.email}`);
-
-      // Instead of relying purely on a 302 redirect (which Chrome Custom Tabs sometimes block),
-      // we render a brief HTML page that executes the link via JavaScript and gives a fallback button.
-      const deepLink = `moments365://auth/callback?token=${encodeURIComponent(token)}`;
-
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Login Successful</title>
-          <style>
-            body { font-family: sans-serif; text-align: center; padding: 40px 20px; background: #1a1a2e; color: white; }
-            .btn { display: inline-block; margin-top: 20px; padding: 15px 30px; background: #e94560; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; }
-          </style>
-        </head>
-        <body>
-          <h2>Login Successful!</h2>
-          <p>Redirecting you back to the app...</p>
-          <a href="${deepLink}" class="btn">Return to App</a>
-          <script>
-            setTimeout(() => {
-              window.location.replace("${deepLink}");
-            }, 500);
-          </script>
-        </body>
-        </html>
-      `);
+      res.redirect(
+        `moments365://auth/callback?token=${encodeURIComponent(token)}`,
+      );
     });
   } catch (error) {
     console.error("Auth callback error:", error);

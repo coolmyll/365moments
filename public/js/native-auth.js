@@ -77,23 +77,11 @@ const NativeAuth = (() => {
     }
   }
 
-  /** Start the login flow by opening the system browser. */
-  async function login() {
-    const { Browser } = _getPlugins();
-    if (!Browser?.open) {
-      throw new Error("Capacitor Browser plugin is unavailable");
-    }
-
-    // Determine the server URL.  In dev mode the Capacitor config
-    // points the WebView at http://10.0.2.2:3000 but the system
-    // browser runs outside the emulator so it should use localhost
-    // or the real hostname.  We read the current origin which is
-    // already correct from the WebView's perspective — the server
-    // itself resolves the right base URL via getBaseUrl().
+  /** Start the login flow by navigating the WebView (like RSSio). */
+  function login() {
     const loginUrl = `${window.location.origin}/auth/login?from=app`;
-    console.log("[NativeAuth] Opening system browser:", loginUrl);
-
-    await Browser.open({ url: loginUrl });
+    console.log("[NativeAuth] Navigating WebView to:", loginUrl);
+    window.location.href = loginUrl;
   }
 
   return { init, login };
