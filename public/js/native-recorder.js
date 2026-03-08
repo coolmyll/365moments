@@ -260,6 +260,23 @@ class NativeRecorder {
   async startCountdownAndRecord() {
     this.setRecordingEnabled(false);
 
+    // Ensure native camera + microphone permissions are granted before countdown.
+    const OneSecondRecorder = window.Capacitor?.Plugins?.OneSecondRecorder;
+    if (OneSecondRecorder) {
+      const perms = await OneSecondRecorder.checkPermissions();
+      if (perms.camera !== "granted" || perms.microphone !== "granted") {
+        const requested = await OneSecondRecorder.requestPermissions();
+        if (
+          requested.camera !== "granted" ||
+          requested.microphone !== "granted"
+        ) {
+          showToast("Camera and microphone permissions are required.", "error");
+          this.setRecordingEnabled(true);
+          return;
+        }
+      }
+    }
+
     // Countdown
     for (let i = CONFIG.VIDEO_COUNTDOWN_SECONDS; i > 0; i--) {
       this.countdownEl.textContent = i;
@@ -277,20 +294,7 @@ class NativeRecorder {
     this.recordingIndicator.classList.remove("hidden");
 
     try {
-      const OneSecondRecorder = window.Capacitor?.Plugins?.OneSecondRecorder;
-
       if (OneSecondRecorder) {
-        // Ensure native camera + microphone permissions are granted.
-        // The WebView preview only requests camera (audio: false), so
-        // RECORD_AUDIO may not have been granted yet.
-        const perms = await OneSecondRecorder.checkPermissions();
-        if (perms.camera !== "granted" || perms.microphone !== "granted") {
-          const requested = await OneSecondRecorder.requestPermissions();
-          if (requested.camera !== "granted" || requested.microphone !== "granted") {
-            throw new Error("Camera or microphone permission denied");
-          }
-        }
-
         // The plugin records exactly durationMs of video via CameraX and
         // auto-stops.  It returns { filePath, mimeType, durationMs }.
         const result = await OneSecondRecorder.record({
