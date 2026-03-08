@@ -289,6 +289,8 @@ class NativeRecorder {
 
     // ---- Native capture via custom OneSecondRecorder CameraX plugin ----
     // Stop the preview stream so the native camera can take over the hardware.
+    // Hide the video element so the browser doesn't show a play button placeholder.
+    this.preview.style.visibility = "hidden";
     this.stopCamera();
 
     this.isRecording = true;
@@ -350,6 +352,7 @@ class NativeRecorder {
       this.isRecording = false;
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");
+      this.preview.style.visibility = "";
     }
   }
 
