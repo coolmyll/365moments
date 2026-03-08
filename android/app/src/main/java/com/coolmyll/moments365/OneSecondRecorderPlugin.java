@@ -104,8 +104,11 @@ public class OneSecondRecorderPlugin extends Plugin {
 
                 FileOutputOptions outputOptions = new FileOutputOptions.Builder(outputFile).build();
 
+                // Use array holder so the recording ref is accessible inside the lambda
+                final Recording[] recordingHolder = new Recording[1];
+
                 // Start recording
-                Recording recording = videoCapture.getOutput()
+                recordingHolder[0] = videoCapture.getOutput()
                     .prepareRecording(getContext(), outputOptions)
                     .withAudioEnabled()
                     .start(ContextCompat.getMainExecutor(getContext()), videoRecordEvent -> {
@@ -115,7 +118,7 @@ public class OneSecondRecorderPlugin extends Plugin {
                             Log.i(TAG, "Recording actually started, scheduling stop in " + durationMs + "ms");
                             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                                 try {
-                                    recording.stop();
+                                    recordingHolder[0].stop();
                                     Log.i(TAG, "Recording auto-stopped after " + durationMs + "ms of actual recording");
                                 } catch (Exception e) {
                                     Log.w(TAG, "Error stopping recording", e);
