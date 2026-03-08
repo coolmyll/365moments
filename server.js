@@ -230,7 +230,7 @@ app.get("/auth/callback", async (req, res) => {
 
       console.log(`[AUTH] Redirecting to deep link for ${user.email}`);
       res.redirect(
-        `com.coolmyll.moments365://auth/callback?token=${encodeURIComponent(token)}`,
+        `moments365://auth/callback?token=${encodeURIComponent(token)}`,
       );
     });
   } catch (error) {

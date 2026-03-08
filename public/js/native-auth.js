@@ -7,6 +7,26 @@
 const NativeAuth = (() => {
   let _initialised = false;
 
+  async function _handleIncomingUrl(urlString, browser) {
+    console.log("[NativeAuth] Deep link received:", urlString);
+
+    try {
+      const url = new URL(urlString);
+      if (url.host === "auth" && url.pathname === "/callback") {
+        const token = url.searchParams.get("token");
+        if (token) {
+          await _exchangeToken(token);
+          if (browser?.close) {
+            await browser.close();
+          }
+          window.location.replace("/");
+        }
+      }
+    } catch (error) {
+      console.error("[NativeAuth] Failed to process deep link:", error);
+    }
+  }
+
   function _getPlugins() {
     const plugins = window.Capacitor?.Plugins || {};
     return {
@@ -46,23 +66,15 @@ const NativeAuth = (() => {
     }
 
     App.addListener("appUrlOpen", async (event) => {
-      console.log("[NativeAuth] Deep link received:", event.url);
-      try {
-        const url = new URL(event.url);
-        if (url.host === "auth" && url.pathname === "/callback") {
-          const token = url.searchParams.get("token");
-          if (token) {
-            await _exchangeToken(token);
-            if (Browser?.close) {
-              await Browser.close();
-            }
-            window.location.replace("/");
-          }
-        }
-      } catch (e) {
-        console.error("[NativeAuth] Failed to process deep link:", e);
-      }
+      await _handleIncomingUrl(event.url, Browser);
     });
+
+    if (App.getLaunchUrl) {
+      const launchUrl = await App.getLaunchUrl();
+      if (launchUrl?.url) {
+        await _handleIncomingUrl(launchUrl.url, Browser);
+      }
+    }
   }
 
   /** Start the login flow by opening the system browser. */
