@@ -565,7 +565,9 @@ class App {
 
       const viewBtn = document.createElement("button");
       viewBtn.className = "day-option-btn primary";
-      viewBtn.innerHTML = isImage ? '<span class="material-symbols-rounded">image</span> View Image' : '<span class="material-symbols-rounded">play_circle</span> View Video';
+      viewBtn.innerHTML = isImage
+        ? '<span class="material-symbols-rounded">image</span> View Image'
+        : '<span class="material-symbols-rounded">play_circle</span> View Video';
       viewBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.showVideoPreview(dateString, clip);
@@ -574,7 +576,9 @@ class App {
 
       const replaceBtn = document.createElement("button");
       replaceBtn.className = "day-option-btn secondary";
-      replaceBtn.innerHTML = isImage ? '<span class="material-symbols-rounded">sync</span> Replace Image' : '<span class="material-symbols-rounded">sync</span> Replace Video';
+      replaceBtn.innerHTML = isImage
+        ? '<span class="material-symbols-rounded">sync</span> Replace Image'
+        : '<span class="material-symbols-rounded">sync</span> Replace Video';
       replaceBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.openUploadModal(dateString, true); // true = replace mode
@@ -583,7 +587,9 @@ class App {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "day-option-btn danger";
-      deleteBtn.innerHTML = isImage ? '<span class="material-symbols-rounded">delete</span> Delete Image' : '<span class="material-symbols-rounded">delete</span> Delete Video';
+      deleteBtn.innerHTML = isImage
+        ? '<span class="material-symbols-rounded">delete</span> Delete Image'
+        : '<span class="material-symbols-rounded">delete</span> Delete Video';
       deleteBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.deleteClip(clip);
@@ -593,7 +599,8 @@ class App {
       // No video for this day - show record and upload options
       const recordBtn = document.createElement("button");
       recordBtn.className = "day-option-btn primary";
-      recordBtn.innerHTML = '<span class="material-symbols-rounded">videocam</span> Record Now';
+      recordBtn.innerHTML =
+        '<span class="material-symbols-rounded">videocam</span> Record Now';
       recordBtn.addEventListener("click", async () => {
         this.closeDayOptionsModal();
         this.showScreen("main");
@@ -612,7 +619,8 @@ class App {
 
       const uploadBtn = document.createElement("button");
       uploadBtn.className = "day-option-btn secondary";
-      uploadBtn.innerHTML = '<span class="material-symbols-rounded">upload</span> Upload Video';
+      uploadBtn.innerHTML =
+        '<span class="material-symbols-rounded">upload</span> Upload Video';
       uploadBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.openUploadModal(dateString);
