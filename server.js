@@ -156,7 +156,7 @@ app.get("/auth/login", (req, res) => {
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
-    prompt: "select_account",
+    prompt: "consent",
     state: req.query.from === "app" ? "app" : "web",
   });
   res.redirect(authUrl);
