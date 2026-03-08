@@ -51,7 +51,7 @@ const Notifications = {
       notifications: [
         {
           id: this.REMINDER_ID,
-          title: "📹 365 Moments",
+          title: "365 Moments",
           body: "Don't forget to record your 1-second moment today!",
           schedule: {
             on: {
@@ -82,7 +82,49 @@ const Notifications = {
     await LocalNotifications.cancel({
       notifications: [{ id: this.REMINDER_ID }],
     });
-    console.log("Notifications: daily reminder cancelled");
+    console.log("Notifications: reminder cancelled");
+  },
+
+  // Schedule a weekly reminder (every Sunday) at the given hour/minute.
+  async scheduleWeekly(hour, minute) {
+    if (!Platform.isNative()) return;
+
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!LocalNotifications) return;
+
+    // Cancel existing first
+    try {
+      await LocalNotifications.cancel({
+        notifications: [{ id: this.REMINDER_ID }],
+      });
+    } catch {
+      /* ignore */
+    }
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: this.REMINDER_ID,
+          title: "365 Moments",
+          body: "Don't forget to record your moments this week!",
+          schedule: {
+            on: {
+              weekday: 1, // Sunday (1-based: 1=Sun, 2=Mon, ... 7=Sat)
+              hour: hour ?? this.DEFAULT_HOUR,
+              minute: minute ?? this.DEFAULT_MINUTE,
+            },
+            repeats: true,
+            allowWhileIdle: true,
+          },
+          sound: "default",
+          smallIcon: "ic_stat_icon",
+        },
+      ],
+    });
+
+    console.log(
+      `Notifications: weekly reminder set for Sun ${hour}:${String(minute).padStart(2, "0")}`,
+    );
   },
 
   // Suppress today's reminder if the user already recorded

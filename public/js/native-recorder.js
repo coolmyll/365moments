@@ -175,8 +175,10 @@ class NativeRecorder {
 
   updateOrientationIcon() {
     if (this.orientationBtn) {
-      this.orientationBtn.textContent =
-        this.currentOrientation === "portrait" ? "📱" : "📺";
+      this.orientationBtn.innerHTML =
+        this.currentOrientation === "portrait"
+          ? '<span class="material-symbols-rounded">smartphone</span>'
+          : '<span class="material-symbols-rounded">tablet</span>';
     }
     const cameraContainer = document.querySelector(".camera-container");
     if (cameraContainer) {
@@ -417,7 +419,7 @@ class NativeRecorder {
       const result = await API.uploadClip(blob, fileName);
 
       showToast(
-        `Moment saved for ${CONFIG.formatDateStringForDisplay(targetDate)}! 🎉`,
+        `Moment saved for ${CONFIG.formatDateStringForDisplay(targetDate)}!`,
         "success",
       );
 

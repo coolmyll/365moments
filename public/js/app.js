@@ -51,12 +51,62 @@ class App {
   }
 
   setupEventListeners() {
+    // Profile dropdown toggle
+    const userInfoBtn = document.getElementById("user-info-btn");
+    const profileDropdown = document.getElementById("profile-dropdown");
+    const chevron = userInfoBtn.querySelector(".header-chevron");
+
+    userInfoBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = !profileDropdown.classList.contains("hidden");
+      profileDropdown.classList.toggle("hidden");
+      chevron.classList.toggle("open", !isOpen);
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", () => {
+      profileDropdown.classList.add("hidden");
+      chevron.classList.remove("open");
+    });
+    profileDropdown.addEventListener("click", (e) => e.stopPropagation());
+
     // Signout
     document
       .getElementById("signout-btn")
       .addEventListener("click", async () => {
+        profileDropdown.classList.add("hidden");
         await API.logout();
         window.location.reload();
+      });
+
+    // Settings / Reminders
+    document.getElementById("settings-btn").addEventListener("click", () => {
+      profileDropdown.classList.add("hidden");
+      chevron.classList.remove("open");
+      this.openSettings();
+    });
+
+    document
+      .getElementById("close-settings-btn")
+      .addEventListener("click", () => {
+        document.getElementById("settings-modal").classList.add("hidden");
+      });
+
+    document
+      .getElementById("reminder-enabled")
+      .addEventListener("change", (e) => {
+        const opts = document.getElementById("reminder-options");
+        if (e.target.checked) {
+          opts.classList.remove("disabled");
+        } else {
+          opts.classList.add("disabled");
+        }
+      });
+
+    document
+      .getElementById("save-reminder-btn")
+      .addEventListener("click", () => {
+        this.saveReminderSettings();
       });
 
     // Permission error logout button
@@ -227,10 +277,17 @@ class App {
 
     // Initialize daily reminder notifications (native only)
     await Notifications.init();
-    await Notifications.scheduleDaily(
-      Notifications.DEFAULT_HOUR,
-      Notifications.DEFAULT_MINUTE,
+    const savedReminder = JSON.parse(
+      localStorage.getItem("reminderSettings") || "{}",
     );
+    if (savedReminder.enabled !== false) {
+      const [h, m] = (savedReminder.time || "20:00").split(":").map(Number);
+      if (savedReminder.frequency === "weekly") {
+        await Notifications.scheduleWeekly(h, m);
+      } else {
+        await Notifications.scheduleDaily(h, m);
+      }
+    }
 
     // Check if recorded today
     this.checkTodayStatus();
@@ -331,18 +388,18 @@ class App {
 
   getStreakMessage(streak) {
     // Milestone messages
-    if (streak >= 365) return "🏆 LEGENDARY! A full year!";
-    if (streak >= 300) return "👑 Incredible dedication!";
-    if (streak >= 200) return "🌟 Unstoppable!";
-    if (streak >= 100) return "💯 Triple digits! Amazing!";
-    if (streak >= 50) return "🚀 Halfway to 100!";
-    if (streak >= 30) return "🎉 One month strong!";
-    if (streak >= 21) return "💪 Habit formed!";
-    if (streak >= 14) return "✨ Two weeks!";
-    if (streak >= 7) return "🔥 One week down!";
-    if (streak >= 5) return "⭐ Great progress!";
-    if (streak >= 3) return "👍 Keep it going!";
-    return "🌱 Building momentum!";
+    if (streak >= 365) return "LEGENDARY! A full year!";
+    if (streak >= 300) return "Incredible dedication!";
+    if (streak >= 200) return "Unstoppable!";
+    if (streak >= 100) return "Triple digits! Amazing!";
+    if (streak >= 50) return "Halfway to 100!";
+    if (streak >= 30) return "One month strong!";
+    if (streak >= 21) return "Habit formed!";
+    if (streak >= 14) return "Two weeks!";
+    if (streak >= 7) return "One week down!";
+    if (streak >= 5) return "Great progress!";
+    if (streak >= 3) return "Keep it going!";
+    return "Building momentum!";
   }
 
   isMilestone(streak) {
@@ -497,7 +554,7 @@ class App {
 
     // Format date for display (using helper to avoid timezone issues)
     const formattedDate = CONFIG.formatDateStringForDisplay(dateString);
-    title.textContent = `📅 ${formattedDate}`;
+    title.textContent = formattedDate;
 
     // Clear existing buttons
     buttonsContainer.innerHTML = "";
@@ -508,7 +565,7 @@ class App {
 
       const viewBtn = document.createElement("button");
       viewBtn.className = "day-option-btn primary";
-      viewBtn.innerHTML = isImage ? "🖼️ View Image" : "▶️ View Video";
+      viewBtn.innerHTML = isImage ? '<span class="material-symbols-rounded">image</span> View Image' : '<span class="material-symbols-rounded">play_circle</span> View Video';
       viewBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.showVideoPreview(dateString, clip);
@@ -517,7 +574,7 @@ class App {
 
       const replaceBtn = document.createElement("button");
       replaceBtn.className = "day-option-btn secondary";
-      replaceBtn.innerHTML = isImage ? "🔄 Replace Image" : "🔄 Replace Video";
+      replaceBtn.innerHTML = isImage ? '<span class="material-symbols-rounded">sync</span> Replace Image' : '<span class="material-symbols-rounded">sync</span> Replace Video';
       replaceBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.openUploadModal(dateString, true); // true = replace mode
@@ -526,7 +583,7 @@ class App {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "day-option-btn danger";
-      deleteBtn.innerHTML = isImage ? "🗑️ Delete Image" : "🗑️ Delete Video";
+      deleteBtn.innerHTML = isImage ? '<span class="material-symbols-rounded">delete</span> Delete Image' : '<span class="material-symbols-rounded">delete</span> Delete Video';
       deleteBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.deleteClip(clip);
@@ -536,7 +593,7 @@ class App {
       // No video for this day - show record and upload options
       const recordBtn = document.createElement("button");
       recordBtn.className = "day-option-btn primary";
-      recordBtn.innerHTML = "📹 Record Now";
+      recordBtn.innerHTML = '<span class="material-symbols-rounded">videocam</span> Record Now';
       recordBtn.addEventListener("click", async () => {
         this.closeDayOptionsModal();
         this.showScreen("main");
@@ -555,7 +612,7 @@ class App {
 
       const uploadBtn = document.createElement("button");
       uploadBtn.className = "day-option-btn secondary";
-      uploadBtn.innerHTML = "📤 Upload Video";
+      uploadBtn.innerHTML = '<span class="material-symbols-rounded">upload</span> Upload Video';
       uploadBtn.addEventListener("click", () => {
         this.closeDayOptionsModal();
         this.openUploadModal(dateString);
@@ -776,7 +833,7 @@ class App {
     try {
       const result = await API.compileVideo(startDate, endDate, musicData);
       if (result.status === "started") {
-        showToast("Compilation started! Check status in 📼 menu.", "success");
+        showToast("Compilation started! Check status in menu.", "success");
         this.startCompileStatusPolling();
       } else if (result.status === "already_compiling") {
         showToast("A compilation is already in progress", "info");
@@ -916,10 +973,10 @@ class App {
           <div class="compilation-actions">
             <button class="play-btn" onclick="app.playCompilation('${
               comp.id
-            }')">▶️ Play</button>
+            }')"><span class="material-symbols-rounded">play_circle</span> Play</button>
             <button class="delete-btn" onclick="app.deleteCompilation('${
               comp.id
-            }')">🗑️</button>
+            }')"><span class="material-symbols-rounded">delete</span></button>
           </div>
         </div>
       `,
@@ -1076,7 +1133,7 @@ class App {
         startTime,
       );
 
-      showToast(`Clip saved for ${date}! 🎉`, "success");
+      showToast(`Clip saved for ${date}!`, "success");
 
       // Refresh clips and close modal
       await this.loadClips();
@@ -1094,6 +1151,53 @@ class App {
       submitBtn.disabled = false;
       submitBtn.textContent = "Upload & Trim to 1 Second";
     }
+  }
+
+  // ---- Settings / Reminders ----
+
+  openSettings() {
+    // Load saved settings from localStorage
+    const saved = JSON.parse(localStorage.getItem("reminderSettings") || "{}");
+    const enabled = saved.enabled !== false; // default on
+    const time = saved.time || "20:00";
+    const frequency = saved.frequency || "daily";
+
+    document.getElementById("reminder-enabled").checked = enabled;
+    document.getElementById("reminder-time").value = time;
+    document.getElementById("reminder-frequency").value = frequency;
+
+    const opts = document.getElementById("reminder-options");
+    if (enabled) {
+      opts.classList.remove("disabled");
+    } else {
+      opts.classList.add("disabled");
+    }
+
+    document.getElementById("settings-modal").classList.remove("hidden");
+  }
+
+  async saveReminderSettings() {
+    const enabled = document.getElementById("reminder-enabled").checked;
+    const time = document.getElementById("reminder-time").value;
+    const frequency = document.getElementById("reminder-frequency").value;
+    const [hour, minute] = time.split(":").map(Number);
+
+    const settings = { enabled, time, frequency };
+    localStorage.setItem("reminderSettings", JSON.stringify(settings));
+
+    if (enabled) {
+      if (frequency === "weekly") {
+        await Notifications.scheduleWeekly(hour, minute);
+      } else {
+        await Notifications.scheduleDaily(hour, minute);
+      }
+      showToast("Reminder saved", "success");
+    } else {
+      await Notifications.cancelDaily();
+      showToast("Reminders disabled", "success");
+    }
+
+    document.getElementById("settings-modal").classList.add("hidden");
   }
 }
 

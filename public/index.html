@@ -7,7 +7,11 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>365 Moments</title>
-    <link rel="stylesheet" href="/styles.css?v=12" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0"
+    />
+    <link rel="stylesheet" href="/styles.css?v=14" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#1a1a2e" />
     <link rel="icon" type="image/png" href="/icon.png" />
@@ -27,7 +31,7 @@
       <!-- Auth Screen -->
       <div id="auth-screen" class="screen">
         <div class="auth-container">
-          <h1>📹 365 Moments</h1>
+          <h1>365 Moments</h1>
           <p>Record 1 second every day. Create your year in 365 seconds.</p>
           <a
             href="/auth/login"
@@ -72,7 +76,7 @@
       <!-- Permission Error Screen -->
       <div id="permission-error-screen" class="screen">
         <div class="auth-container">
-          <h1>⚠️ Permission Required</h1>
+          <h1>Permission Required</h1>
           <p>Google Drive access was not granted.</p>
           <p>
             Please log out and log in again, making sure to
@@ -84,7 +88,7 @@
             class="google-btn"
             style="background: #e74c3c"
           >
-            🚪 Log Out and Try Again
+            Log Out and Try Again
           </button>
         </div>
       </div>
@@ -92,24 +96,37 @@
       <!-- Main Recording Screen -->
       <div id="main-screen" class="screen">
         <header>
-          <div class="user-info">
+          <div class="user-info" id="user-info-btn">
             <img id="user-avatar" src="" alt="User" />
             <span id="user-name"></span>
+            <span class="material-symbols-rounded header-chevron"
+              >expand_more</span
+            >
+          </div>
+
+          <!-- Profile Dropdown -->
+          <div id="profile-dropdown" class="profile-dropdown hidden">
+            <button id="settings-btn" class="dropdown-item">
+              <span class="material-symbols-rounded">notifications</span>
+              Reminders
+            </button>
+            <div class="dropdown-divider"></div>
+            <button id="signout-btn" class="dropdown-item dropdown-danger">
+              <span class="material-symbols-rounded">logout</span>
+              Sign Out
+            </button>
           </div>
 
           <!-- Streak Display in Header -->
           <div id="streak-display" class="streak-display hidden">
-            <span class="streak-fire">🔥</span>
+            <span class="streak-fire material-symbols-rounded">local_fire_department</span>
             <span id="streak-count">0</span>
             <span id="streak-message" class="streak-message"></span>
           </div>
 
           <div class="header-actions">
             <button id="gallery-btn" class="icon-btn" title="View Gallery">
-              📁
-            </button>
-            <button id="signout-btn" class="icon-btn" title="Sign Out">
-              🚪
+              <span class="material-symbols-rounded">photo_library</span>
             </button>
           </div>
         </header>
@@ -124,10 +141,13 @@
           <div class="camera-container landscape">
             <video id="camera-preview" autoplay muted playsinline></video>
             <div id="camera-off-overlay" class="camera-off-overlay hidden">
-              <span class="camera-off-icon">✅</span>
+              <span class="material-symbols-rounded camera-off-icon"
+                >check_circle</span
+              >
               <p>Already recorded for this day!</p>
               <button id="go-to-gallery-btn" class="go-to-gallery-btn">
-                📁 View in Gallery
+                <span class="material-symbols-rounded">photo_library</span>
+                View in Gallery
               </button>
             </div>
             <div id="countdown" class="countdown hidden"></div>
@@ -142,7 +162,7 @@
               class="control-btn"
               title="Switch Camera"
             >
-              🔄
+              <span class="material-symbols-rounded">cameraswitch</span>
             </button>
             <button id="record-btn" class="record-btn" title="Record 1 Second">
               <span class="record-inner"></span>
@@ -152,12 +172,13 @@
               class="control-btn"
               title="Toggle Portrait/Landscape"
             >
-              📱
+              <span class="material-symbols-rounded">screen_rotation</span>
             </button>
           </div>
 
           <p class="upload-hint">
-            💡 Go to Gallery to upload for a specific day
+            <span class="material-symbols-rounded" style="font-size: 16px; vertical-align: middle">lightbulb</span>
+            Go to Gallery to upload for a specific day
           </p>
         </main>
       </div>
@@ -165,7 +186,9 @@
       <!-- Gallery Screen -->
       <div id="gallery-screen" class="screen">
         <header>
-          <button id="back-btn" class="icon-btn">⬅️</button>
+          <button id="back-btn" class="icon-btn">
+            <span class="material-symbols-rounded">arrow_back</span>
+          </button>
           <h2>Your Moments</h2>
           <div class="header-actions">
             <button
@@ -173,10 +196,10 @@
               class="icon-btn"
               title="View Compilations"
             >
-              📼
+              <span class="material-symbols-rounded">video_library</span>
             </button>
             <button id="compile-btn" class="icon-btn" title="Create Year Video">
-              🎬
+              <span class="material-symbols-rounded">movie_edit</span>
             </button>
           </div>
         </header>
@@ -211,7 +234,7 @@
       <div id="day-options-modal" class="modal hidden">
         <div class="modal-content day-options-content">
           <button id="close-day-options" class="close-btn">✕</button>
-          <h3 id="day-options-title">📅 January 1, 2025</h3>
+          <h3 id="day-options-title">January 1, 2025</h3>
           <div id="day-options-buttons" class="day-options-buttons">
             <!-- Buttons will be added dynamically -->
           </div>
@@ -222,7 +245,7 @@
       <div id="compile-modal" class="modal hidden">
         <div class="modal-content">
           <div class="modal-header">
-            <h3>🎬 Create Compilation</h3>
+            <h3>Create Compilation</h3>
             <button class="close-btn" onclick="app.closeCompileModal()">
               ✕
             </button>
@@ -240,7 +263,7 @@
 
             <!-- Music Selection -->
             <div class="music-section">
-              <label>🎵 Background Music (optional):</label>
+              <label>Background Music (optional):</label>
               <label class="file-input-label music-file-label">
                 <input
                   type="file"
@@ -251,7 +274,7 @@
               </label>
               <div id="selected-music" class="selected-music hidden">
                 <div class="selected-music-info">
-                  <span class="selected-music-icon">🎵</span>
+                  <span class="material-symbols-rounded selected-music-icon">music_note</span>
                   <span id="selected-music-title"></span>
                 </div>
                 <button
@@ -266,7 +289,7 @@
             </div>
 
             <button id="start-compile-btn" class="primary-btn">
-              🎬 Compile Video
+              Compile Video
             </button>
           </div>
         </div>
@@ -278,7 +301,7 @@
           <div class="uploading-animation">
             <div class="spinner large"></div>
           </div>
-          <h3>📤 Uploading to Google Drive</h3>
+          <h3>Uploading to Google Drive</h3>
           <p id="uploading-message">
             Please wait while your moment is being saved...
           </p>
@@ -289,7 +312,7 @@
       <div id="upload-modal" class="modal hidden">
         <div class="modal-content upload-modal-content">
           <button id="close-upload-modal" class="close-btn">✕</button>
-          <h3>📤 Upload Video</h3>
+          <h3>Upload Video</h3>
           <p>
             Select a video or image and choose which date it's for. Videos will
             be trimmed to 1 second. Images will be shown for 1 second in
@@ -338,7 +361,7 @@
       <div id="compilations-modal" class="modal hidden">
         <div class="modal-content">
           <div class="modal-header">
-            <h3>📼 Your Compilations</h3>
+            <h3>Your Compilations</h3>
             <button class="close-btn" onclick="app.closeCompilationsModal()">
               ✕
             </button>
@@ -355,15 +378,72 @@
           </div>
         </div>
       </div>
+
+      <!-- Reminders Settings Modal -->
+      <div id="settings-modal" class="modal hidden">
+        <div class="modal-content settings-modal-content">
+          <div class="modal-header">
+            <h3>Reminders</h3>
+            <button class="close-btn" id="close-settings-btn">✕</button>
+          </div>
+
+          <div class="settings-form">
+            <div class="setting-row">
+              <div class="setting-label">
+                <span class="material-symbols-rounded">notifications_active</span>
+                <div>
+                  <strong>Daily Reminder</strong>
+                  <small>Get notified to record your moment</small>
+                </div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="reminder-enabled" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div id="reminder-options" class="reminder-options">
+              <div class="setting-row">
+                <div class="setting-label">
+                  <span class="material-symbols-rounded">schedule</span>
+                  <div>
+                    <strong>Reminder Time</strong>
+                    <small>When should we remind you?</small>
+                  </div>
+                </div>
+                <input type="time" id="reminder-time" value="20:00" class="time-input" />
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-label">
+                  <span class="material-symbols-rounded">calendar_today</span>
+                  <div>
+                    <strong>Frequency</strong>
+                    <small>How often to remind you</small>
+                  </div>
+                </div>
+                <select id="reminder-frequency" class="select-input">
+                  <option value="daily">Every day</option>
+                  <option value="weekly">Once a week</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="save-reminder-btn" class="primary-btn save-settings-btn">
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="/js/config.js?v=14"></script>
     <script src="/js/platform.js?v=16"></script>
     <script src="/js/native-auth.js?v=16"></script>
     <script src="/js/api.js?v=14"></script>
-    <script src="/js/recorder.js?v=14"></script>
-    <script src="/js/native-recorder.js?v=18"></script>
-    <script src="/js/notifications.js?v=14"></script>
-    <script src="/js/app.js?v=16"></script>
+    <script src="/js/recorder.js?v=15"></script>
+    <script src="/js/native-recorder.js?v=19"></script>
+    <script src="/js/notifications.js?v=15"></script>
+    <script src="/js/app.js?v=17"></script>
   </body>
 </html>

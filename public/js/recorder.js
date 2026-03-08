@@ -230,8 +230,10 @@ class VideoRecorder {
   updateOrientationIcon() {
     if (this.orientationBtn) {
       // Show current mode icon
-      this.orientationBtn.textContent =
-        this.currentOrientation === "portrait" ? "📱" : "📺";
+      this.orientationBtn.innerHTML =
+        this.currentOrientation === "portrait"
+          ? '<span class="material-symbols-rounded">smartphone</span>'
+          : '<span class="material-symbols-rounded">tablet</span>';
     }
     // Update camera container aspect ratio
     const cameraContainer = document.querySelector(".camera-container");
@@ -408,7 +410,7 @@ class VideoRecorder {
       const result = await API.uploadClip(blob, fileName);
 
       const dateDisplay = CONFIG.formatDateStringForDisplay(targetDate);
-      showToast(`Moment saved for ${dateDisplay}! 🎉`, "success");
+      showToast(`Moment saved for ${dateDisplay}!`, "success");
 
       // Update cache
       this.clipsCache.set(targetDate, result.file);
