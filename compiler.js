@@ -28,7 +28,7 @@ class VideoCompiler {
     const isProd = process.env.NODE_ENV === "production";
     this.minClips = isProd ? 7 : 2;
     console.log(
-      `VideoCompiler: NODE_ENV=${process.env.NODE_ENV}, minClips=${this.minClips}`
+      `VideoCompiler: NODE_ENV=${process.env.NODE_ENV}, minClips=${this.minClips}`,
     );
   }
 
@@ -37,7 +37,7 @@ class VideoCompiler {
     startDate = null,
     endDate = null,
     onProgress = null,
-    musicData = null
+    musicData = null,
   ) {
     const sessionDir = path.join(TEMP_DIR, `session-${crypto.randomUUID()}`);
     fs.mkdirSync(sessionDir, { recursive: true });
@@ -70,7 +70,7 @@ class VideoCompiler {
 
       if (clips.length < this.minClips) {
         throw new Error(
-          `Need at least ${this.minClips} clips to compile (found ${clips.length})`
+          `Need at least ${this.minClips} clips to compile (found ${clips.length})`,
         );
       }
 
@@ -85,7 +85,7 @@ class VideoCompiler {
       const outputFileName =
         startDate && endDate
           ? `365moments_${formatForDisplay(startDate)}_to_${formatForDisplay(
-              endDate
+              endDate,
             )}_${timestamp}.mp4`
           : `365moments-compilation_${timestamp}.mp4`;
 
@@ -94,7 +94,7 @@ class VideoCompiler {
       const localFiles = await this.downloadClips(
         clips,
         sessionDir,
-        onProgress
+        onProgress,
       );
 
       // 3. Create file list for FFmpeg
@@ -120,7 +120,7 @@ class VideoCompiler {
       const uploadedFile = await this.uploadToDrive(
         outputPath,
         outputFileName,
-        folderId
+        folderId,
       );
 
       // 6. Cleanup
@@ -160,7 +160,7 @@ class VideoCompiler {
     // Filter out compilations and thumbnails - only include files matching YYYY-MM-DD.ext pattern
     const datePattern = /^\d{4}-\d{2}-\d{2}\.(mp4|webm|jpg|jpeg|png)$/i;
     const dailyClips = files.filter(
-      (file) => datePattern.test(file.name) && !file.name.includes(".thumb.")
+      (file) => datePattern.test(file.name) && !file.name.includes(".thumb."),
     );
 
     // Google Drive allows multiple files with the same name; keep only the latest per date
@@ -177,22 +177,22 @@ class VideoCompiler {
       }
 
       const existingTime = new Date(
-        existing.modifiedTime || existing.createdTime || 0
+        existing.modifiedTime || existing.createdTime || 0,
       );
       const candidateTime = new Date(
-        file.modifiedTime || file.createdTime || 0
+        file.modifiedTime || file.createdTime || 0,
       );
 
       if (candidateTime >= existingTime) {
         console.log(
-          `Duplicate clip found for ${dateKey}, keeping the most recent upload`
+          `Duplicate clip found for ${dateKey}, keeping the most recent upload`,
         );
         uniqueByDate.set(dateKey, file);
       }
     });
 
     return Array.from(uniqueByDate.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
+      a.name.localeCompare(b.name),
     );
   }
 
@@ -203,7 +203,7 @@ class VideoCompiler {
       const clip = clips[i];
       const downloadPath = path.join(
         sessionDir,
-        `${String(i).padStart(4, "0")}-${clip.name}`
+        `${String(i).padStart(4, "0")}-${clip.name}`,
       );
 
       const progressMsg = `Downloading ${i + 1}/${clips.length}...`;
@@ -212,7 +212,7 @@ class VideoCompiler {
 
       const response = await this.drive.files.get(
         { fileId: clip.id, alt: "media" },
-        { responseType: "stream" }
+        { responseType: "stream" },
       );
 
       await new Promise((resolve, reject) => {
@@ -234,13 +234,13 @@ class VideoCompiler {
         fs.unlinkSync(downloadPath);
         localFiles.push(videoPath);
         console.log(
-          `[COMPILE] Clip ${i + 1}: ${clip.name} (image -> 1s video)`
+          `[COMPILE] Clip ${i + 1}: ${clip.name} (image -> 1s video)`,
         );
       } else {
         // Normalize video to exactly 1 second to ensure consistent compilation
         const normalizedPath = downloadPath.replace(
           /\.(mp4|webm)$/i,
-          "-norm.mp4"
+          "-norm.mp4",
         );
         if (onProgress)
           onProgress(`Normalizing clip ${i + 1}/${clips.length}...`);
@@ -249,7 +249,7 @@ class VideoCompiler {
         fs.unlinkSync(downloadPath);
         localFiles.push(normalizedPath);
         console.log(
-          `[COMPILE] Clip ${i + 1}: ${clip.name} (video -> 1s normalized)`
+          `[COMPILE] Clip ${i + 1}: ${clip.name} (video -> 1s normalized)`,
         );
       }
     }
@@ -262,7 +262,7 @@ class VideoCompiler {
     inputPath,
     outputPath,
     width = 1920,
-    height = 1080
+    height = 1080,
   ) {
     return new Promise((resolve, reject) => {
       // Take only the first 1 second, re-encode to consistent format
@@ -300,7 +300,7 @@ class VideoCompiler {
         if (output.includes("Duration:")) {
           console.log(
             "  Original duration:",
-            output.match(/Duration: [^,]+/)?.[0]
+            output.match(/Duration: [^,]+/)?.[0],
           );
         }
       });
@@ -311,7 +311,7 @@ class VideoCompiler {
           resolve(outputPath);
         } else {
           reject(
-            new Error(`FFmpeg video normalization exited with code ${code}`)
+            new Error(`FFmpeg video normalization exited with code ${code}`),
           );
         }
       });
