@@ -59,7 +59,15 @@ const upload = multer({
 
 // Middleware
 app.use(express.json({ limit: "50mb" })); // Increased for base64 music files
-app.use(express.static(path.join(__dirname, "public")));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith("index.html") || filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      }
+    },
+  }),
+);
 
 // Trust proxy in production (required for secure cookies behind Railway/Render/etc)
 if (process.env.NODE_ENV === "production") {
