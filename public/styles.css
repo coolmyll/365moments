@@ -707,17 +707,22 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
   z-index: 1000;
 }
 
 .modal-content {
   position: relative;
+  width: 100%;
   max-width: 90%;
   max-height: 80%;
   text-align: center;
   background: var(--bg-secondary);
   border-radius: 16px;
   padding: 1.5rem;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .modal-content video,
@@ -779,6 +784,71 @@ header {
 
   .auth-container h1 {
     font-size: 3rem;
+  }
+}
+
+@media (orientation: landscape) {
+  #main-screen main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "date controls"
+      "camera controls"
+      "hint controls";
+    align-items: center;
+    justify-items: center;
+    column-gap: 1rem;
+    row-gap: 0.75rem;
+    padding: 0.75rem 1rem 1rem;
+  }
+
+  #main-screen main > * {
+    min-width: 0;
+  }
+
+  .date-display {
+    grid-area: date;
+    width: 100%;
+  }
+
+  .camera-container {
+    grid-area: camera;
+  }
+
+  .camera-container.landscape {
+    width: min(100%, calc((100vh - 220px) * 16 / 9));
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .controls {
+    grid-area: controls;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0;
+  }
+
+  .upload-hint {
+    grid-area: hint;
+    margin-top: 0;
+    max-width: min(100%, 520px);
+  }
+}
+
+@media (max-width: 480px) {
+  .setting-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toggle-switch {
+    align-self: flex-start;
+  }
+
+  .time-input,
+  .select-input {
+    width: 100%;
   }
 }
 
@@ -987,7 +1057,10 @@ header {
   border-radius: 16px;
   max-width: 320px;
   width: 90%;
+  max-height: min(90vh, calc(100vh - 2rem));
   text-align: center;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .day-options-content h3 {
@@ -1541,8 +1614,11 @@ header {
 .settings-modal-content {
   max-width: 400px;
   width: 90%;
+  max-height: min(90vh, calc(100vh - 2rem));
   background: var(--bg-secondary);
   text-align: left;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .settings-form {
@@ -1555,6 +1631,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   padding: 16px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
