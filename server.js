@@ -159,13 +159,14 @@ app.get("/auth/login", (req, res) => {
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
+    state: req.query.from === "app" ? "app" : "web"
   });
   res.redirect(authUrl);
 });
 
 // OAuth callback
 app.get("/auth/callback", async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
 
   if (!code) {
     return res.redirect("/?error=no_code");
@@ -205,11 +206,13 @@ app.get("/auth/callback", async (req, res) => {
       }
 
       const cookies = req.headers.cookie || "";
-      const isApp = cookies
+      const isAppCookie = cookies
         .split(";")
         .some((cookie) =>
           cookie.trim().startsWith(`${NATIVE_AUTH_COOKIE}=app`),
         );
+        
+      const isApp = state === "app" || isAppCookie;
 
       if (!isApp) {
         return res.redirect("/");
