@@ -240,10 +240,12 @@ header {
 /* Streak Display - Header Version */
 .streak-display {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
   justify-self: center;
-  gap: 0.2rem;
+  justify-content: center;
+  gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: linear-gradient(
     135deg,
@@ -253,7 +255,7 @@ header {
   border-radius: 20px;
   text-align: center;
   min-width: 0;
-  max-width: min(100%, 280px);
+  max-width: 100%;
 }
 
 .streak-main {
@@ -261,6 +263,7 @@ header {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .streak-display.milestone {
@@ -289,10 +292,13 @@ header {
 }
 
 .streak-message {
+  display: block;
+  min-width: 0;
   font-size: 0.75rem;
   color: var(--text-secondary);
   margin: 0;
   text-align: center;
+  white-space: nowrap;
 }
 
 @keyframes fireFlicker {
@@ -908,8 +914,12 @@ header {
   }
 
   .streak-display {
-    max-width: 170px;
+    max-width: 100%;
     padding: 0.35rem 0.6rem;
+  }
+
+  .streak-message {
+    white-space: normal;
   }
 
   .setting-row {
