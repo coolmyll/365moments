@@ -1081,15 +1081,25 @@ app.get("/api/compilations", requireAuth, async (req, res) => {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
     const folderId = await getOrCreateFolder(drive);
 
-    const response = await drive.files.list({
-      q: `'${folderId}' in parents and trashed=false and name contains '365moments' and mimeType contains 'video/'`,
-      fields: "files(id, name, createdTime, size)",
-      orderBy: "createdTime desc",
-    });
+    const files = [];
+    let pageToken;
+
+    do {
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed=false and name contains '365moments' and mimeType contains 'video/'`,
+        fields: "nextPageToken, files(id, name, createdTime, size)",
+        orderBy: "createdTime desc",
+        pageSize: 1000,
+        pageToken,
+      });
+
+      files.push(...(response.data.files || []));
+      pageToken = response.data.nextPageToken || null;
+    } while (pageToken);
 
     // Filter to only compilation files (not daily clips which are YYYY-MM-DD.mp4)
     const datePattern = /^\d{4}-\d{2}-\d{2}\.(mp4|webm)$/;
-    const compilations = (response.data.files || [])
+    const compilations = files
       .filter((file) => !datePattern.test(file.name))
       .map((file) => ({
         id: file.id,

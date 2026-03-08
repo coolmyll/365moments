@@ -140,21 +140,32 @@ class VideoCompiler {
   }
 
   async fetchClipsList(folderId) {
-    const response = await this.drive.files.list({
-      q: `'${folderId}' in parents and trashed=false and (mimeType contains 'video/' or mimeType contains 'image/')`,
-      fields: "files(id, name, mimeType, createdTime, modifiedTime)",
-      orderBy: "name", // Sort by date (filename is YYYY-MM-DD)
-    });
+    const files = [];
+    let pageToken;
+
+    do {
+      const response = await this.drive.files.list({
+        q: `'${folderId}' in parents and trashed=false and (mimeType contains 'video/' or mimeType contains 'image/')`,
+        fields:
+          "nextPageToken, files(id, name, mimeType, createdTime, modifiedTime)",
+        orderBy: "name", // Sort by date (filename is YYYY-MM-DD)
+        pageSize: 1000,
+        pageToken,
+      });
+
+      files.push(...(response.data.files || []));
+      pageToken = response.data.nextPageToken || null;
+    } while (pageToken);
 
     // Filter out compilations and thumbnails - only include files matching YYYY-MM-DD.ext pattern
     const datePattern = /^\d{4}-\d{2}-\d{2}\.(mp4|webm|jpg|jpeg|png)$/i;
-    const files = (response.data.files || []).filter(
+    const dailyClips = files.filter(
       (file) => datePattern.test(file.name) && !file.name.includes(".thumb.")
     );
 
     // Google Drive allows multiple files with the same name; keep only the latest per date
     const uniqueByDate = new Map();
-    files.forEach((file) => {
+    dailyClips.forEach((file) => {
       const dateMatch = file.name.match(/^(\d{4}-\d{2}-\d{2})/);
       if (!dateMatch) return;
       const dateKey = dateMatch[1];
