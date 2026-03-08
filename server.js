@@ -7,7 +7,6 @@ const path = require("path");
 const crypto = require("crypto");
 const { google } = require("googleapis");
 
-const NATIVE_AUTH_COOKIE = "moments365_auth_from";
 const nativeAuthTokens = new Map();
 
 // Redis for production session storage
@@ -142,14 +141,6 @@ app.get("/api/auth/status", (req, res) => {
 
 // Start OAuth flow
 app.get("/auth/login", (req, res) => {
-  if (req.query.from === "app") {
-    res.cookie(NATIVE_AUTH_COOKIE, "app", {
-      maxAge: 5 * 60 * 1000,
-      httpOnly: true,
-      sameSite: "lax",
-    });
-  }
-
   const baseUrl = getBaseUrl(req);
   const redirectUri = `${baseUrl}/auth/callback`;
   const client = createOAuthClient(redirectUri);
@@ -158,13 +149,14 @@ app.get("/auth/login", (req, res) => {
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
+    state: req.query.from === "app" ? "app" : "web",
   });
   res.redirect(authUrl);
 });
 
 // OAuth callback
 app.get("/auth/callback", async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
 
   if (!code) {
     return res.redirect("/?error=no_code");
@@ -203,23 +195,9 @@ app.get("/auth/callback", async (req, res) => {
         return res.redirect("/?error=auth_failed");
       }
 
-      const cookies = req.headers.cookie || "";
-      const isAppCookie = cookies
-        .split(";")
-        .some((cookie) =>
-          cookie.trim().startsWith(`${NATIVE_AUTH_COOKIE}=app`),
-        );
-
-      const isApp = isAppCookie;
-
-      if (!isApp) {
+      if (state !== "app") {
         return res.redirect("/");
       }
-
-      res.clearCookie(NATIVE_AUTH_COOKIE, {
-        httpOnly: true,
-        sameSite: "lax",
-      });
 
       const token = crypto.randomUUID();
       nativeAuthTokens.set(token, {

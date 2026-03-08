@@ -77,11 +77,16 @@ const NativeAuth = (() => {
     }
   }
 
-  /** Start the login flow by navigating the WebView (like RSSio). */
-  function login() {
+  /** Start the login flow by opening the system browser. */
+  async function login() {
+    const { Browser } = _getPlugins();
+    if (!Browser?.open) {
+      throw new Error("Capacitor Browser plugin is unavailable");
+    }
+
     const loginUrl = `${window.location.origin}/auth/login?from=app`;
-    console.log("[NativeAuth] Navigating WebView to:", loginUrl);
-    window.location.href = loginUrl;
+    console.log("[NativeAuth] Opening system browser:", loginUrl);
+    await Browser.open({ url: loginUrl });
   }
 
   return { init, login };

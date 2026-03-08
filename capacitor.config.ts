@@ -6,7 +6,6 @@ const config: CapacitorConfig = {
     webDir: "public",
     server: {
         url: "https://365.chrismyll.gr",
-        allowNavigation: ["accounts.google.com", "*.google.com"],
     },
     plugins: {
         CapacitorCookies: { enabled: true },
