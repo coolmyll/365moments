@@ -258,7 +258,7 @@ class App {
 
     // Update UI with user info
     document.getElementById("user-avatar").src = this.user.picture || "";
-    document.getElementById("user-name").textContent = this.user.name;
+    document.getElementById("profile-name").textContent = this.user.name;
 
     // Load clips from Drive - this may show permission error screen
     const clipsLoaded = await this.loadClips();
@@ -341,9 +341,12 @@ class App {
       }
 
       // Close profile dropdown if open
-      const dropdown = document.querySelector(".profile-dropdown.show");
+      const dropdown = document.querySelector(".profile-dropdown:not(.hidden)");
       if (dropdown) {
-        dropdown.classList.remove("show");
+        dropdown.classList.add("hidden");
+        document
+          .querySelector("#user-info-btn .header-chevron")
+          ?.classList.remove("open");
         return;
       }
 
@@ -451,7 +454,9 @@ class App {
   }
 
   isMilestone(streak) {
-    const milestones = [7, 14, 21, 30, 50, 60, 75, 90, 100, 150, 200, 250, 300, 350, 365];
+    const milestones = [
+      7, 14, 21, 30, 50, 60, 75, 90, 100, 150, 200, 250, 300, 350, 365,
+    ];
     return milestones.includes(streak);
   }
 

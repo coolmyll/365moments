@@ -158,9 +158,10 @@ body {
 
 /* Header */
 header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
+  gap: 0.75rem;
   padding: 1rem;
   background: var(--bg-secondary);
 }
@@ -168,7 +169,9 @@ header {
 .user-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  justify-self: start;
+  min-width: 0;
 }
 
 .user-info img {
@@ -177,13 +180,10 @@ header {
   border-radius: 50%;
 }
 
-.user-info span {
-  font-weight: 500;
-}
-
 .header-actions {
   display: flex;
   gap: 8px;
+  justify-self: end;
 }
 
 .icon-btn {
@@ -240,9 +240,10 @@ header {
 /* Streak Display - Header Version */
 .streak-display {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  justify-self: center;
+  gap: 0.2rem;
   padding: 0.4rem 0.75rem;
   background: linear-gradient(
     135deg,
@@ -250,6 +251,16 @@ header {
     rgba(255, 193, 7, 0.2) 100%
   );
   border-radius: 20px;
+  text-align: center;
+  min-width: 0;
+  max-width: min(100%, 280px);
+}
+
+.streak-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .streak-display.milestone {
@@ -281,7 +292,7 @@ header {
   font-size: 0.75rem;
   color: var(--text-secondary);
   margin: 0;
-  white-space: nowrap;
+  text-align: center;
 }
 
 @keyframes fireFlicker {
@@ -749,6 +760,25 @@ header {
   color: var(--text-secondary);
 }
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-right: 2.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal:not(#video-preview-modal) .modal-content {
+  width: min(100%, 560px);
+  max-width: min(90vw, 560px);
+  max-height: min(90vh, calc(100vh - 2rem));
+}
+
 .close-btn {
   position: absolute;
   top: 10px;
@@ -834,9 +864,54 @@ header {
     margin-top: 0;
     max-width: min(100%, 520px);
   }
+
+  .modal:not(#video-preview-modal) {
+    align-items: flex-start;
+  }
+
+  .modal:not(#video-preview-modal) .modal-content {
+    width: min(100%, 560px);
+    max-width: 100%;
+    max-height: calc(100vh - 2rem);
+    margin: auto;
+  }
+
+  .upload-modal-content,
+  .settings-modal-content,
+  .day-options-content,
+  #compile-modal .modal-content,
+  #compilations-modal .modal-content,
+  #uploading-modal .modal-content {
+    max-width: min(90vw, 560px);
+    max-height: calc(100vh - 2rem);
+  }
+
+  .compilations-list {
+    max-height: min(45vh, 320px);
+  }
+
+  .compilation-item,
+  .selected-music {
+    flex-wrap: wrap;
+  }
+
+  .compilation-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 @media (max-width: 480px) {
+  header {
+    grid-template-columns: auto 1fr auto;
+    padding: 0.75rem;
+  }
+
+  .streak-display {
+    max-width: 170px;
+    padding: 0.35rem 0.6rem;
+  }
+
   .setting-row {
     flex-direction: column;
     align-items: stretch;
@@ -849,6 +924,50 @@ header {
   .time-input,
   .select-input {
     width: 100%;
+  }
+
+  .modal {
+    padding: 0.75rem;
+  }
+
+  .modal:not(#video-preview-modal) .modal-content {
+    max-width: 100%;
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.25rem;
+  }
+
+  .modal-header {
+    padding-right: 2rem;
+  }
+
+  .compilation-item,
+  .selected-music {
+    flex-wrap: wrap;
+  }
+
+  .compilation-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-height: 700px) {
+  .modal:not(#video-preview-modal) {
+    align-items: flex-start;
+  }
+
+  .modal:not(#video-preview-modal) .modal-content {
+    max-height: calc(100vh - 1.5rem);
+    margin: auto;
+  }
+
+  .upload-modal-content,
+  .settings-modal-content,
+  .day-options-content,
+  #compile-modal .modal-content,
+  #compilations-modal .modal-content,
+  #uploading-modal .modal-content {
+    max-height: calc(100vh - 1.5rem);
   }
 }
 
@@ -995,6 +1114,7 @@ header {
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 1rem;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {
@@ -1203,6 +1323,11 @@ header {
 }
 
 /* ============ COMPILE MODAL ============ */
+
+#compile-modal .modal-content {
+  max-width: 480px;
+  max-height: min(90vh, calc(100vh - 2rem));
+}
 
 .compile-form {
   display: flex;
@@ -1558,6 +1683,17 @@ header {
   z-index: 100;
   overflow: hidden;
   animation: dropdownIn 0.15s ease;
+}
+
+.profile-summary {
+  padding: 14px 16px;
+}
+
+.profile-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
 }
 
 @keyframes dropdownIn {

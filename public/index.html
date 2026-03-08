@@ -98,7 +98,6 @@
         <header>
           <div class="user-info" id="user-info-btn">
             <img id="user-avatar" src="" alt="User" />
-            <span id="user-name"></span>
             <span class="material-symbols-rounded header-chevron"
               >expand_more</span
             >
@@ -106,6 +105,10 @@
 
           <!-- Profile Dropdown -->
           <div id="profile-dropdown" class="profile-dropdown hidden">
+            <div class="profile-summary">
+              <div id="profile-name" class="profile-name"></div>
+            </div>
+            <div class="dropdown-divider"></div>
             <button id="settings-btn" class="dropdown-item">
               <span class="material-symbols-rounded">notifications</span>
               Reminders
@@ -119,10 +122,12 @@
 
           <!-- Streak Display in Header -->
           <div id="streak-display" class="streak-display hidden">
-            <span class="streak-fire material-symbols-rounded"
-              >local_fire_department</span
-            >
-            <span id="streak-count">0</span>
+            <div class="streak-main">
+              <span class="streak-fire material-symbols-rounded"
+                >local_fire_department</span
+              >
+              <span id="streak-count">0</span>
+            </div>
             <span id="streak-message" class="streak-message"></span>
           </div>
 
