@@ -29,7 +29,20 @@
         <div class="auth-container">
           <h1>📹 365 Moments</h1>
           <p>Record 1 second every day. Create your year in 365 seconds.</p>
-          <a href="/auth/login" class="google-btn">
+          <a
+            href="/auth/login"
+            class="google-btn"
+            onclick="
+              if (
+                window.Capacitor &&
+                window.Capacitor.isNativePlatform &&
+                window.Capacitor.isNativePlatform()
+              ) {
+                event.preventDefault();
+                NativeAuth.login();
+              }
+            "
+          >
             <svg viewBox="0 0 24 24" width="24" height="24">
               <path
                 fill="#4285F4"
@@ -345,12 +358,12 @@
     </div>
 
     <script src="/js/config.js?v=14"></script>
-    <script src="/js/platform.js?v=15"></script>
-    <script src="/js/native-auth.js?v=15"></script>
+    <script src="/js/platform.js?v=16"></script>
+    <script src="/js/native-auth.js?v=16"></script>
     <script src="/js/api.js?v=14"></script>
     <script src="/js/recorder.js?v=14"></script>
     <script src="/js/native-recorder.js?v=14"></script>
     <script src="/js/notifications.js?v=14"></script>
-    <script src="/js/app.js?v=14"></script>
+    <script src="/js/app.js?v=15"></script>
   </body>
 </html>

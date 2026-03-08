@@ -145,18 +145,11 @@ app.get("/auth/login", (req, res) => {
   const redirectUri = `${baseUrl}/auth/callback`;
   const client = createOAuthClient(redirectUri);
 
-  // Detect native app: explicit query param OR Android WebView User-Agent
-  const ua = req.headers["user-agent"] || "";
-  const isWebView = /\bwv\b/.test(ua) || ua.includes("WebView");
-  const fromApp = req.query.from === "app" || isWebView;
-
-  console.log(`[AUTH] Login request from=${req.query.from}, isWebView=${isWebView}, ua=${ua.substring(0, 120)}`);
-
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
     prompt: "select_account",
-    state: fromApp ? "app" : "web",
+    state: req.query.from === "app" ? "app" : "web",
   });
   res.redirect(authUrl);
 });

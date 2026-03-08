@@ -3,17 +3,14 @@
 // or in a regular browser.
 
 const Platform = {
-  _isNative: null,
-
   // Returns true when running inside the Capacitor Android/iOS shell
   isNative() {
-    if (this._isNative === null) {
-      this._isNative =
-        typeof window !== "undefined" &&
-        window.Capacitor !== undefined &&
-        window.Capacitor.isNativePlatform();
-    }
-    return this._isNative;
+    return (
+      typeof window !== "undefined" &&
+      window.Capacitor !== undefined &&
+      typeof window.Capacitor.isNativePlatform === "function" &&
+      window.Capacitor.isNativePlatform()
+    );
   },
 
   // Returns "android", "ios", or "web"

@@ -34,21 +34,6 @@ class App {
       this.checkCompileStatus();
     } else {
       this.showScreen("auth");
-
-      // On native platforms, intercept the Google sign-in link so it opens
-      // the system browser (Chrome Custom Tab) instead of navigating in
-      // the WebView.
-      if (Platform.isNative()) {
-        const loginLink = document.querySelector(
-          '.google-btn[href="/auth/login"]',
-        );
-        if (loginLink) {
-          loginLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            NativeAuth.login();
-          });
-        }
-      }
     }
 
     // Set up event listeners
