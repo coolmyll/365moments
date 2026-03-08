@@ -330,7 +330,11 @@ async function requireAuth(req, res, next) {
       }
 
       console.error("Token refresh error:", err);
-      return res.status(401).json({ error: "Token refresh failed" });
+      req.session.destroy(() => {});
+      return res.status(401).json({
+        error: "Token refresh failed. Please log in again.",
+        requireReauth: true,
+      });
     }
   } catch (err) {
     console.error("Authentication middleware error:", err);
