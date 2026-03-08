@@ -301,7 +301,7 @@ class NativeRecorder {
         // Keep the WebView preview running — the last frame stays visible
         // while CameraX takes over the camera hardware.
         const result = await OneSecondRecorder.record({
-          durationMs: CONFIG.VIDEO_DURATION_MS + 500, // buffer for CameraX startup latency
+          durationMs: CONFIG.VIDEO_DURATION_MS, // timer starts from actual CameraX Start event
           useFrontCamera: this.currentFacingMode === "user",
         });
 

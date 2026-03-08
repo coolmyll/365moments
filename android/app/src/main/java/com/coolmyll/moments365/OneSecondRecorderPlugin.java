@@ -43,7 +43,7 @@ import java.util.concurrent.Executors;
 public class OneSecondRecorderPlugin extends Plugin {
 
     private static final String TAG = "OneSecondRecorder";
-    private static final int DEFAULT_DURATION_MS = 1500; // slightly over 1s for safety
+    private static final int DEFAULT_DURATION_MS = 1000; // exactly 1 second of actual recording
     private ExecutorService cameraExecutor;
 
     @Override
@@ -109,7 +109,19 @@ public class OneSecondRecorderPlugin extends Plugin {
                     .prepareRecording(getContext(), outputOptions)
                     .withAudioEnabled()
                     .start(ContextCompat.getMainExecutor(getContext()), videoRecordEvent -> {
-                        if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
+                        if (videoRecordEvent instanceof VideoRecordEvent.Start) {
+                            // Camera pipeline is now active — start the duration timer
+                            // from this point so we get a full durationMs of actual content.
+                            Log.i(TAG, "Recording actually started, scheduling stop in " + durationMs + "ms");
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                try {
+                                    recording.stop();
+                                    Log.i(TAG, "Recording auto-stopped after " + durationMs + "ms of actual recording");
+                                } catch (Exception e) {
+                                    Log.w(TAG, "Error stopping recording", e);
+                                }
+                            }, durationMs);
+                        } else if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
                             VideoRecordEvent.Finalize finalize = (VideoRecordEvent.Finalize) videoRecordEvent;
                             cameraProvider.unbindAll();
 
@@ -127,16 +139,6 @@ public class OneSecondRecorderPlugin extends Plugin {
                             }
                         }
                     });
-
-                // Auto-stop after the requested duration
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    try {
-                        recording.stop();
-                        Log.i(TAG, "Recording auto-stopped after " + durationMs + "ms");
-                    } catch (Exception e) {
-                        Log.w(TAG, "Error stopping recording", e);
-                    }
-                }, durationMs);
 
             } catch (Exception e) {
                 Log.e(TAG, "Camera setup failed", e);

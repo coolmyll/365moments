@@ -428,21 +428,30 @@ class App {
   getStreakMessage(streak) {
     // Milestone messages
     if (streak >= 365) return "LEGENDARY! A full year!";
+    if (streak >= 350) return "So close to a full year!";
     if (streak >= 300) return "Incredible dedication!";
+    if (streak >= 250) return "Quarter thousand! Wow!";
     if (streak >= 200) return "Unstoppable!";
+    if (streak >= 150) return "150 days of memories!";
     if (streak >= 100) return "Triple digits! Amazing!";
+    if (streak >= 90) return "Three months strong!";
+    if (streak >= 75) return "You're on fire!";
+    if (streak >= 60) return "Two months! Impressive!";
     if (streak >= 50) return "Halfway to 100!";
+    if (streak >= 40) return "40 days! Crushing it!";
     if (streak >= 30) return "One month strong!";
     if (streak >= 21) return "Habit formed!";
-    if (streak >= 14) return "Two weeks!";
+    if (streak >= 14) return "Two weeks and counting!";
+    if (streak >= 10) return "Double digits!";
     if (streak >= 7) return "One week down!";
     if (streak >= 5) return "Great progress!";
     if (streak >= 3) return "Keep it going!";
-    return "Building momentum!";
+    if (streak >= 2) return "Day two! Nice!";
+    return "First step taken!";
   }
 
   isMilestone(streak) {
-    const milestones = [7, 14, 21, 30, 50, 100, 150, 200, 250, 300, 365];
+    const milestones = [7, 14, 21, 30, 50, 60, 75, 90, 100, 150, 200, 250, 300, 350, 365];
     return milestones.includes(streak);
   }
 
