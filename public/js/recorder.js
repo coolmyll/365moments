@@ -124,8 +124,7 @@ class VideoRecorder {
     }
 
     this.preview.srcObject = this.stream;
-
-    // Log actual resolution obtained
+    this.preview.style.transform = facingMode === "user" ? "scaleX(-1)" : "";
     const videoTrack = this.stream.getVideoTracks()[0];
     if (videoTrack) {
       const settings = videoTrack.getSettings();

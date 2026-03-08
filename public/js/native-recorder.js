@@ -82,6 +82,7 @@ class NativeRecorder {
     }
 
     this.preview.srcObject = this.stream;
+    this.preview.style.transform = facingMode === "user" ? "scaleX(-1)" : "";
   }
 
   stopCamera() {
