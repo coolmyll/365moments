@@ -24,15 +24,20 @@ class App {
     // Initialise native auth deep-link listener (no-op on web)
     await NativeAuth.init();
 
-    // Check authentication status
-    const authStatus = await API.checkAuth();
+    try {
+      // Check authentication status
+      const authStatus = await API.checkAuth();
 
-    if (authStatus.authenticated) {
-      this.user = authStatus.user;
-      await this.handleSignIn();
-      // Check for ongoing compilation
-      this.checkCompileStatus();
-    } else {
+      if (authStatus.authenticated) {
+        this.user = authStatus.user;
+        await this.handleSignIn();
+        // Check for ongoing compilation
+        this.checkCompileStatus();
+      } else {
+        this.showScreen("auth");
+      }
+    } catch (error) {
+      console.error("Init auth check failed:", error);
       this.showScreen("auth");
     }
 
