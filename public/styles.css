@@ -49,6 +49,11 @@ body {
   transform: translateY(0);
 }
 
+#main-screen.active {
+  height: 100vh;
+  overflow: hidden;
+}
+
 /* Loading Screen */
 #loading-screen {
   justify-content: center;
@@ -208,6 +213,8 @@ header {
   align-items: center;
   padding: 1rem;
   gap: 1.5rem;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .date-display {
@@ -313,6 +320,8 @@ header {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  flex-shrink: 1;
+  min-height: 0;
 }
 
 .camera-container.landscape {

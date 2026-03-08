@@ -236,6 +236,7 @@ class NativeRecorder {
     try {
       await this.startCamera();
       this.updateOrientationIcon();
+      window.scrollTo(0, 0);
       showToast(`Switched to ${this.currentOrientation} mode`, "success");
     } catch {
       showToast("Failed to change orientation", "error");
