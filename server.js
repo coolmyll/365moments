@@ -232,9 +232,34 @@ app.get("/auth/callback", async (req, res) => {
       });
 
       console.log(`[AUTH] Redirecting to deep link for ${user.email}`);
-      res.redirect(
-        `moments365://auth/callback?token=${encodeURIComponent(token)}`,
-      );
+
+      // Instead of relying purely on a 302 redirect (which Chrome Custom Tabs sometimes block),
+      // we render a brief HTML page that executes the link via JavaScript and gives a fallback button.
+      const deepLink = `moments365://auth/callback?token=${encodeURIComponent(token)}`;
+
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Login Successful</title>
+          <style>
+            body { font-family: sans-serif; text-align: center; padding: 40px 20px; background: #1a1a2e; color: white; }
+            .btn { display: inline-block; margin-top: 20px; padding: 15px 30px; background: #e94560; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; }
+          </style>
+        </head>
+        <body>
+          <h2>Login Successful!</h2>
+          <p>Redirecting you back to the app...</p>
+          <a href="${deepLink}" class="btn">Return to App</a>
+          <script>
+            setTimeout(() => {
+              window.location.replace("${deepLink}");
+            }, 500);
+          </script>
+        </body>
+        </html>
+      `);
     });
   } catch (error) {
     console.error("Auth callback error:", error);
