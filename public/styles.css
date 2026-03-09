@@ -950,6 +950,48 @@ header {
     padding-right: 2rem;
   }
 
+  .settings-modal-content {
+    max-width: min(100%, 420px);
+    padding: 1.1rem;
+    border-radius: 20px;
+  }
+
+  .settings-modal-content .modal-header {
+    margin-bottom: 0.5rem;
+  }
+
+  .settings-modal-content .setting-row {
+    gap: 0.85rem;
+    padding: 14px 0;
+  }
+
+  .settings-form > .setting-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .settings-modal-content #reminder-options .setting-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-modal-content .setting-label {
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .settings-modal-content .setting-label .material-symbols-rounded {
+    margin-top: 0.1rem;
+  }
+
+  .settings-modal-content .toggle-switch {
+    align-self: center;
+  }
+
+  .settings-modal-content .save-settings-btn {
+    margin-top: 0.85rem;
+  }
+
   .compilation-item,
   .selected-music {
     flex-wrap: wrap;
