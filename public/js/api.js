@@ -1,4 +1,4 @@
-// API Client for 365 Moments
+﻿// API Client for 365 Moments
 
 const API = {
   // Check authentication status
@@ -116,14 +116,27 @@ const API = {
     formData.append("video", file);
     formData.append("date", date);
     formData.append("startTime", startTime.toString());
-
     const response = await fetch("/api/clips/upload-trim", {
       method: "POST",
       body: formData,
     });
-
+    if (!response.ok) {
+      let errorMsg = `Upload failed (${response.status})`;
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMsg = errorData.error;
+        }
+      } catch (e) {
+        // Could not parse error response
+      }
+      const error = new Error(errorMsg);
+      error.status = response.status;
+      throw error;
+    }
     return this.handleResponse(response);
   },
 };
 // Export for global use
 window.API = API;
+

@@ -1185,14 +1185,35 @@ class App {
 
     const submitBtn = document.getElementById("submit-upload");
     submitBtn.disabled = true;
-    submitBtn.textContent = "Processing...";
+
+    // Show uploading modal
+    const uploadingModal = document.getElementById("uploading-modal");
+    const uploadingTitle = document.getElementById("uploading-title");
+    const uploadingMessage = document.getElementById("uploading-message");
+    const uploadingDetails = document.getElementById("uploading-details");
+    const uploadingDetailText = document.getElementById(
+      "uploading-detail-text",
+    );
+
+    uploadingTitle.textContent = "Processing Video";
+    uploadingMessage.textContent = "Uploading and trimming...";
+    uploadingDetailText.textContent = `File: ${this.selectedFile.name} (${(this.selectedFile.size / 1024 / 1024).toFixed(2)} MB)`;
+    uploadingDetails.classList.remove("hidden");
+    uploadingModal.classList.remove("hidden");
 
     try {
+      // Upload and trim
+      uploadingMessage.textContent =
+        "Uploading file and trimming to 1 second...";
       const result = await API.uploadAndTrim(
         this.selectedFile,
         date,
         startTime,
       );
+
+      // Success
+      uploadingMessage.textContent = "Done! Saving...";
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       showToast(`Clip saved for ${date}!`, "success");
 
@@ -1207,10 +1228,35 @@ class App {
       }
     } catch (error) {
       console.error("Upload error:", error);
-      showToast(error.message || "Upload failed", "error");
+
+      // Show detailed error message
+      let errorMsg = "Upload failed";
+      if (error.message) {
+        errorMsg = error.message;
+      }
+      if (error.message && error.message.includes("413")) {
+        errorMsg = "File is too large. Please choose a smaller video.";
+      } else if (error.message && error.message.includes("422")) {
+        errorMsg = "Video format not supported or invalid after trimming.";
+      } else if (error.message && error.message.includes("500")) {
+        errorMsg = "Server error. Please try again later.";
+      }
+
+      uploadingTitle.textContent = "Upload Failed";
+      uploadingMessage.textContent = errorMsg;
+      uploadingDetailText.textContent = "Click outside to dismiss.";
+
+      showToast(errorMsg, "error");
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = "Upload & Trim to 1 Second";
+
+      // Hide uploading modal after 3 seconds on success, keep on error
+      if (!uploadingTitle.textContent.includes("Failed")) {
+        setTimeout(() => {
+          uploadingModal.classList.add("hidden");
+        }, 1500);
+      }
     }
   }
 

@@ -1023,7 +1023,18 @@ header {
   }
 }
 
-/* Toast notifications */
+.uploading-details {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.uploading-details small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
 .toast {
   position: fixed;
   bottom: 20px;
