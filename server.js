@@ -957,7 +957,7 @@ app.post(
       });
     }
 
-    const inputExt = getUploadExtension(req.file.mimetype);
+    const inputExt = getUploadExtension(req.file.mimetype.split(";")[0].trim());
     if (!inputExt) {
       return res.status(415).json({
         error: "Unsupported upload type. Use MP4, WebM, or MOV video files.",
@@ -1274,7 +1274,10 @@ app.post(
       return res.status(400).json({ error: "No file provided" });
     }
 
-    const inputExt = getUploadExtension(req.file.mimetype, true);
+    const inputExt = getUploadExtension(
+      req.file.mimetype.split(";")[0].trim(),
+      true,
+    );
     if (!inputExt) {
       return res.status(415).json({
         error: "Unsupported file type. Use MP4, WebM, MOV, JPG, or PNG.",

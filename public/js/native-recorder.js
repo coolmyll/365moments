@@ -16,7 +16,6 @@ class NativeRecorder {
     this.clipsCache = new Map();
     this.targetDate = null;
     this.currentFacingMode = "user";
-    this.currentOrientation = "landscape";
     this.isRecording = false;
 
     // DOM elements (same IDs as the web recorder)
@@ -143,67 +142,48 @@ class NativeRecorder {
 
   async init() {
     try {
-      await this.startCamera();
       this.setupEventListeners();
       this.setupVisibilityHandling();
-      this.updateOrientationIcon();
-      console.log("NativeRecorder initialized (Capacitor)");
+      // Hide orientation button on native — physical rotation controls this
+      if (this.orientationBtn) {
+        this.orientationBtn.style.display = "none";
+      }
+      // Hide the video preview element — no getUserMedia on native
+      this.preview.style.display = "none";
+      // Show viewfinder UI
+      this.showViewfinder();
+      console.log("NativeRecorder initialized (Capacitor, no WebView preview)");
       return true;
     } catch (error) {
       console.error("Failed to initialize NativeRecorder:", error);
-      showToast("Camera access denied. Please allow camera access.", "error");
+      showToast("Camera initialization failed.", "error");
       return false;
     }
   }
 
-  // Camera preview still uses getUserMedia so the live preview stays in the
-  // existing <video> element.  The actual *recording* is done natively.
-  async startCamera(facingMode = this.currentFacingMode) {
-    if (this.stream) {
-      this.stream.getTracks().forEach((track) => track.stop());
-    }
+  showViewfinder() {
+    const container = document.querySelector(".camera-container");
+    if (!container || document.getElementById("native-viewfinder")) return;
+    const vf = document.createElement("div");
+    vf.id = "native-viewfinder";
+    vf.className = "native-viewfinder";
+    vf.innerHTML =
+      '<span class="material-symbols-rounded">videocam</span><p>Ready to record</p>';
+    container.insertBefore(vf, container.firstChild);
+  }
 
-    const isPortrait = this.currentOrientation === "portrait";
+  hideViewfinder() {
+    const vf = document.getElementById("native-viewfinder");
+    if (vf) vf.remove();
+  }
 
-    const constraints = {
-      video: {
-        width: { ideal: isPortrait ? 1920 : 1080 },
-        height: { ideal: isPortrait ? 1080 : 1920 },
-        facingMode: { exact: facingMode },
-        frameRate: { ideal: 30, min: 24 },
-      },
-      audio: false, // audio not needed for preview
-    };
-
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.currentFacingMode = facingMode;
-    } catch {
-      const fallback = {
-        video: {
-          width: { ideal: isPortrait ? 1920 : 1080 },
-          height: { ideal: isPortrait ? 1080 : 1920 },
-          facingMode: facingMode,
-          frameRate: { ideal: 30, min: 15 },
-        },
-        audio: false,
-      };
-      this.stream = await navigator.mediaDevices.getUserMedia(fallback);
-      this.currentFacingMode = facingMode;
-    }
-
-    this.preview.srcObject = this.stream;
-    this.preview.style.display = "";
-    this.preview.style.transform = facingMode === "user" ? "scaleX(-1)" : "";
+  // No getUserMedia on native — camera is CameraX only
+  async startCamera() {
+    // no-op on native
   }
 
   stopCamera() {
-    if (this.stream) {
-      this.stream.getTracks().forEach((track) => track.stop());
-      this.stream = null;
-    }
-    this.preview.srcObject = null;
-    this.preview.style.display = "none";
+    // no-op on native — no WebView stream to stop
   }
 
   async resumePreview() {
@@ -212,21 +192,12 @@ class NativeRecorder {
       this.updateRecordingState(true);
       return;
     }
-    try {
-      if (!this.stream || !this.stream.active) {
-        await this.startCamera();
-      } else if (this.preview.paused) {
-        await this.preview.play();
-      }
-      this.updateRecordingState(false);
-    } catch {
-      await this.startCamera();
-      this.updateRecordingState(false);
-    }
+    this.showViewfinder();
+    this.updateRecordingState(false);
   }
 
   destroy() {
-    this.stopCamera();
+    // no-op — no WebView stream
   }
 
   // ---- Cache / date helpers (same as VideoRecorder) ----
@@ -259,21 +230,13 @@ class NativeRecorder {
       this.recordBtn.classList.add("disabled");
       this.switchCameraBtn.disabled = true;
       this.switchCameraBtn.classList.add("disabled");
-      if (this.orientationBtn) {
-        this.orientationBtn.disabled = true;
-        this.orientationBtn.classList.add("disabled");
-      }
-      this.stopCamera();
+      this.hideViewfinder();
       if (cameraOffOverlay) cameraOffOverlay.classList.remove("hidden");
     } else {
       this.recordBtn.disabled = false;
       this.recordBtn.classList.remove("disabled");
       this.switchCameraBtn.disabled = false;
       this.switchCameraBtn.classList.remove("disabled");
-      if (this.orientationBtn) {
-        this.orientationBtn.disabled = false;
-        this.orientationBtn.classList.remove("disabled");
-      }
       if (cameraOffOverlay) cameraOffOverlay.classList.add("hidden");
     }
   }
@@ -288,20 +251,7 @@ class NativeRecorder {
   }
 
   updateOrientationIcon() {
-    if (this.orientationBtn) {
-      this.orientationBtn.innerHTML =
-        this.currentOrientation === "portrait"
-          ? '<span class="material-symbols-rounded">smartphone</span>'
-          : '<span class="material-symbols-rounded">tablet</span>';
-    }
-    const cameraContainer = document.querySelector(".camera-container");
-    if (cameraContainer) {
-      if (this.currentOrientation === "landscape") {
-        cameraContainer.classList.add("landscape");
-      } else {
-        cameraContainer.classList.remove("landscape");
-      }
-    }
+    // No orientation toggle on native
   }
 
   // ---- Event listeners ----
@@ -309,52 +259,24 @@ class NativeRecorder {
   setupEventListeners() {
     this.recordBtn.addEventListener("click", () => this.handleRecordClick());
     this.switchCameraBtn.addEventListener("click", () => this.switchCamera());
-    if (this.orientationBtn) {
-      this.orientationBtn.addEventListener("click", () =>
-        this.toggleOrientation(),
-      );
-    }
   }
 
   setupVisibilityHandling() {
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        if (!this.isRecording) this.stopCamera();
-      } else {
-        if (!this.isRecording && !this.isDayRecorded()) this.resumePreview();
+      if (!document.hidden && !this.isRecording && !this.isDayRecorded()) {
+        this.showViewfinder();
       }
     });
-    window.addEventListener("beforeunload", () => this.destroy());
   }
 
   async switchCamera() {
     if (this.isDayRecorded()) return;
-    const newFacingMode =
+    this.currentFacingMode =
       this.currentFacingMode === "user" ? "environment" : "user";
-    try {
-      await this.startCamera(newFacingMode);
-      this.updateOrientationIcon();
-      showToast(
-        `Switched to ${newFacingMode === "user" ? "front" : "back"} camera`,
-        "success",
-      );
-    } catch {
-      showToast("Could not switch camera", "error");
-    }
-  }
-
-  async toggleOrientation() {
-    if (this.isDayRecorded()) return;
-    this.currentOrientation =
-      this.currentOrientation === "portrait" ? "landscape" : "portrait";
-    try {
-      await this.startCamera();
-      this.updateOrientationIcon();
-      window.scrollTo(0, 0);
-      showToast(`Switched to ${this.currentOrientation} mode`, "success");
-    } catch {
-      showToast("Failed to change orientation", "error");
-    }
+    showToast(
+      `Switched to ${this.currentFacingMode === "user" ? "front" : "back"} camera`,
+      "success",
+    );
   }
 
   // ---- Recording (native path) ----
@@ -399,14 +321,11 @@ class NativeRecorder {
 
     try {
       if (OneSecondRecorder) {
-        // The plugin records exactly durationMs of video via CameraX and
-        // auto-stops.  It returns { filePath, mimeType, durationMs }.
-        // Keep the WebView preview running — the last frame stays visible
-        // while CameraX takes over the camera hardware.
+        this.hideViewfinder();
+
         const result = await OneSecondRecorder.record({
-          durationMs: CONFIG.VIDEO_DURATION_MS, // timer starts from actual CameraX Start event
+          durationMs: CONFIG.VIDEO_DURATION_MS,
           useFrontCamera: this.currentFacingMode === "user",
-          orientation: this.currentOrientation,
         });
 
         const recordingResult = this.validateNativeRecordingResult(result);
@@ -429,19 +348,8 @@ class NativeRecorder {
       this.isRecording = false;
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");
-      const shouldResumePreview = !this.isDayRecorded() && !document.hidden;
-
-      if (shouldResumePreview) {
-        try {
-          await this.startCamera();
-        } catch (error) {
-          console.error(
-            "Failed to restart preview after native recording:",
-            error,
-          );
-        }
-      } else {
-        this.stopCamera();
+      if (!this.isDayRecorded()) {
+        this.showViewfinder();
       }
     }
   }
@@ -514,7 +422,6 @@ class NativeRecorder {
 
       const result = await API.uploadClip(blob, fileName, {
         captureSource: "native-android",
-        captureOrientation: this.currentOrientation,
       });
 
       if (typeof app !== "undefined" && app.stopUploadingDelight) {

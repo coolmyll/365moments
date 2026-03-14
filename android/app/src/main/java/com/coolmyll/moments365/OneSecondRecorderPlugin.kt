@@ -1,7 +1,6 @@
 package com.coolmyll.moments365
 
 import android.Manifest
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -53,17 +52,13 @@ class OneSecondRecorderPlugin : Plugin() {
         cameraExecutor = Executors.newSingleThreadExecutor()
         orientationEventListener = object : OrientationEventListener(context, SENSOR_DELAY_NORMAL) {
             override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) {
-                    return
-                }
-
+                if (orientation == ORIENTATION_UNKNOWN) return
                 currentDeviceRotation = when (orientation) {
                     in 45 until 135 -> Surface.ROTATION_270
                     in 135 until 225 -> Surface.ROTATION_180
                     in 225 until 315 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
                 }
-
                 activeVideoCapture?.targetRotation = currentDeviceRotation
             }
         }
@@ -74,15 +69,9 @@ class OneSecondRecorderPlugin : Plugin() {
     fun record(call: PluginCall) {
         val durationMs = call.getInt("durationMs") ?: DEFAULT_DURATION_MS
         val useFrontCamera = call.getBoolean("useFrontCamera") ?: false
-        val orientation = call.getString("orientation") ?: DEFAULT_ORIENTATION
 
         if (durationMs < MIN_DURATION_MS || durationMs > MAX_DURATION_MS) {
             call.reject("durationMs must be between $MIN_DURATION_MS and $MAX_DURATION_MS")
-            return
-        }
-
-        if (orientation != ORIENTATION_PORTRAIT && orientation != ORIENTATION_LANDSCAPE) {
-            call.reject("orientation must be portrait or landscape")
             return
         }
 
@@ -95,7 +84,7 @@ class OneSecondRecorderPlugin : Plugin() {
         activity.runOnUiThread {
             try {
                 stopActiveRecording("restart")
-                startRecording(call, durationMs, useFrontCamera, orientation)
+                startRecording(call, durationMs, useFrontCamera)
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to start recording", error)
                 call.reject("Recording failed: ${error.message}")
@@ -108,7 +97,6 @@ class OneSecondRecorderPlugin : Plugin() {
         call: PluginCall,
         durationMs: Int,
         useFrontCamera: Boolean,
-        orientation: String,
     ) {
         val context = context
         val activity = activity
@@ -285,10 +273,7 @@ class OneSecondRecorderPlugin : Plugin() {
         private const val DEFAULT_DURATION_MS = 1000
         private const val MIN_DURATION_MS = 700
         private const val MAX_DURATION_MS = 5000
-        private const val SENSOR_DELAY_NORMAL = 3
         private const val ENCODER_WARMUP_MS = 300
-        private const val ORIENTATION_PORTRAIT = "portrait"
-        private const val ORIENTATION_LANDSCAPE = "landscape"
-        private const val DEFAULT_ORIENTATION = ORIENTATION_LANDSCAPE
+        private const val SENSOR_DELAY_NORMAL = 3
     }
 }
