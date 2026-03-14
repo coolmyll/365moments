@@ -12,6 +12,7 @@ class App {
     this.activeModalId = null;
     this.lastFocusedElement = null;
     this.pendingConfirmation = null;
+    this.modalCloseTimers = new Map();
     this.screens = {
       loading: document.getElementById("loading-screen"),
       auth: document.getElementById("auth-screen"),
@@ -444,11 +445,18 @@ class App {
     const modal = document.getElementById(modalId);
     if (!modal) return;
 
+    const existingTimer = this.modalCloseTimers.get(modalId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.modalCloseTimers.delete(modalId);
+    }
+
     this.lastFocusedElement =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
     this.activeModalId = modalId;
+    modal.classList.remove("is-closing");
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
     modal.scrollTop = 0;
@@ -464,22 +472,40 @@ class App {
     const modal = document.getElementById(modalId);
     if (!modal) return;
 
-    modal.classList.add("hidden");
+    const existingTimer = this.modalCloseTimers.get(modalId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.modalCloseTimers.delete(modalId);
+    }
+
+    const focusTarget =
+      restoreFocus &&
+      this.lastFocusedElement &&
+      this.lastFocusedElement.isConnected
+        ? this.lastFocusedElement
+        : null;
+
+    modal.classList.add("is-closing");
     modal.setAttribute("aria-hidden", "true");
 
     if (this.activeModalId === modalId) {
       this.activeModalId = null;
     }
 
-    if (
-      restoreFocus &&
-      this.lastFocusedElement &&
-      this.lastFocusedElement.isConnected
-    ) {
-      this.lastFocusedElement.focus();
-    }
-
     this.lastFocusedElement = null;
+
+    const closeTimer = setTimeout(() => {
+      modal.classList.add("hidden");
+      modal.classList.remove("is-closing");
+
+      if (focusTarget) {
+        focusTarget.focus();
+      }
+
+      this.modalCloseTimers.delete(modalId);
+    }, 180);
+
+    this.modalCloseTimers.set(modalId, closeTimer);
   }
 
   dismissActiveModal({ restoreFocus = true } = {}) {
@@ -580,6 +606,7 @@ class App {
       screen.classList.remove("active");
     });
     this.screens[screenName].classList.add("active");
+    document.body.dataset.activeScreen = screenName;
     window.scrollTo(0, 0);
   }
 
@@ -773,6 +800,7 @@ class App {
     months.forEach((monthName, monthIndex) => {
       const monthSection = document.createElement("section");
       monthSection.className = "month-section";
+      monthSection.style.setProperty("--month-index", String(monthIndex));
 
       const monthHeader = document.createElement("h3");
       monthHeader.textContent = monthName;
@@ -1549,6 +1577,7 @@ class App {
       uploadingMessage.textContent = "Moment saved. Refreshing your library...";
       await new Promise((resolve) => setTimeout(resolve, 500));
 
+      window.celebrateMomentSaved?.("#uploading-modal .modal-content");
       showToast(`Clip saved for ${date}!`, "success");
 
       // Refresh clips and close modal

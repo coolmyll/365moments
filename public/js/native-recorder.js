@@ -503,6 +503,7 @@ class NativeRecorder {
 
       const result = await API.uploadClip(blob, fileName);
 
+      window.celebrateMomentSaved?.(".camera-container");
       showToast(
         `Moment saved for ${CONFIG.formatDateStringForDisplay(targetDate)}!`,
         "success",

@@ -409,6 +409,7 @@ class VideoRecorder {
       const result = await API.uploadClip(blob, fileName);
 
       const dateDisplay = CONFIG.formatDateStringForDisplay(targetDate);
+      celebrateMomentSaved(".camera-container");
       showToast(`Moment saved for ${dateDisplay}!`, "success");
 
       // Update cache
@@ -479,10 +480,42 @@ function showToast(message, type = "success") {
   }
 
   setTimeout(() => {
+    toast.classList.add("is-leaving");
+  }, 2780);
+
+  setTimeout(() => {
     toast.remove();
   }, 3000);
+}
+
+function celebrateMomentSaved(anchorSelector = ".camera-container") {
+  if (
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    return;
+  }
+
+  const anchor = document.querySelector(anchorSelector);
+  if (!anchor) {
+    return;
+  }
+
+  const rect = anchor.getBoundingClientRect();
+  const burst = document.createElement("div");
+  burst.className = "celebration-burst";
+  burst.innerHTML =
+    '<div class="celebration-core"></div><div class="celebration-ring"></div><div class="celebration-spark"></div>';
+  burst.style.left = `${rect.left + rect.width / 2}px`;
+  burst.style.top = `${rect.top + rect.height / 2}px`;
+  document.body.appendChild(burst);
+
+  setTimeout(() => {
+    burst.remove();
+  }, 820);
 }
 
 // Export for global use
 window.VideoRecorder = VideoRecorder;
 window.showToast = showToast;
+window.celebrateMomentSaved = celebrateMomentSaved;
