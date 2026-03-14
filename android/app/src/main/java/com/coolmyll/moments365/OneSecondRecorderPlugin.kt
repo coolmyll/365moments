@@ -1,13 +1,19 @@
 package com.coolmyll.moments365
 
 import android.Manifest
+import android.graphics.Outline
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.OrientationEventListener
 import android.view.Surface
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.MirrorMode
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.PendingRecording
@@ -17,6 +23,7 @@ import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
+import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
@@ -29,6 +36,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 @CapacitorPlugin(
     name = "OneSecondRecorder",
@@ -43,9 +51,13 @@ class OneSecondRecorderPlugin : Plugin() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var activeRecording: Recording? = null
     private var activeCameraProvider: ProcessCameraProvider? = null
+    private var activePreview: Preview? = null
     private var activeVideoCapture: VideoCapture<Recorder>? = null
+    private var previewContainer: FrameLayout? = null
+    private var previewView: PreviewView? = null
     private var pendingStopRunnable: Runnable? = null
     private var currentDeviceRotation = Surface.ROTATION_0
+    private var previewCornerRadiusPx = 0f
     private var orientationEventListener: OrientationEventListener? = null
 
     override fun load() {
@@ -59,10 +71,73 @@ class OneSecondRecorderPlugin : Plugin() {
                     in 225 until 315 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
                 }
+                activePreview?.targetRotation = currentDeviceRotation
                 activeVideoCapture?.targetRotation = currentDeviceRotation
             }
         }
         orientationEventListener?.enable()
+    }
+
+    @PluginMethod
+    fun startPreview(call: PluginCall) {
+        val activity = activity
+        val useFrontCamera = call.getBoolean("useFrontCamera") ?: false
+
+        if (activity == null) {
+            call.reject("Activity unavailable")
+            return
+        }
+
+        activity.runOnUiThread {
+            try {
+                ensurePreviewContainer()
+                updatePreviewLayoutInternal(call)
+                bindPreview(useFrontCamera) { error ->
+                    if (error != null) {
+                        call.reject("Preview failed: ${error.message}")
+                    } else {
+                        call.resolve(JSObject())
+                    }
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Failed to start preview", error)
+                call.reject("Preview failed: ${error.message}")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun updatePreviewLayout(call: PluginCall) {
+        val activity = activity
+        if (activity == null) {
+            call.reject("Activity unavailable")
+            return
+        }
+
+        activity.runOnUiThread {
+            try {
+                ensurePreviewContainer()
+                updatePreviewLayoutInternal(call)
+                call.resolve(JSObject())
+            } catch (error: Exception) {
+                Log.e(TAG, "Failed to update preview layout", error)
+                call.reject("Preview layout update failed: ${error.message}")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun stopPreview(call: PluginCall) {
+        val activity = activity
+        if (activity == null) {
+            call.reject("Activity unavailable")
+            return
+        }
+
+        activity.runOnUiThread {
+            stopPreviewInternal("stopPreview")
+            call.resolve(JSObject())
+        }
     }
 
     @PluginMethod
@@ -83,6 +158,7 @@ class OneSecondRecorderPlugin : Plugin() {
 
         activity.runOnUiThread {
             try {
+                stopPreviewInternal("record")
                 stopActiveRecording("restart")
                 startRecording(call, durationMs, useFrontCamera)
             } catch (error: Exception) {
@@ -90,6 +166,65 @@ class OneSecondRecorderPlugin : Plugin() {
                 call.reject("Recording failed: ${error.message}")
             }
         }
+    }
+
+    @Suppress("MissingPermission")
+    private fun bindPreview(
+        useFrontCamera: Boolean,
+        onComplete: (Exception?) -> Unit,
+    ) {
+        val context = context
+        val activity = activity
+
+        if (context == null || activity == null) {
+            onComplete(IllegalStateException("Camera context unavailable"))
+            return
+        }
+
+        val localPreviewView = previewView
+        if (localPreviewView == null) {
+            onComplete(IllegalStateException("PreviewView unavailable"))
+            return
+        }
+
+        val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
+            ProcessCameraProvider.getInstance(context)
+
+        cameraProviderFuture.addListener(
+            {
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    activeCameraProvider = cameraProvider
+
+                    val preview = Preview.Builder()
+                        .setTargetRotation(currentDeviceRotation)
+                        .build().also {
+                            it.setSurfaceProvider(localPreviewView.surfaceProvider)
+                        }
+
+                    val cameraSelector = if (useFrontCamera) {
+                        CameraSelector.DEFAULT_FRONT_CAMERA
+                    } else {
+                        CameraSelector.DEFAULT_BACK_CAMERA
+                    }
+
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(activity, cameraSelector, preview)
+
+                    activePreview = preview
+                    activeVideoCapture = null
+                    onComplete(null)
+                } catch (error: Exception) {
+                    activePreview = null
+                    activeVideoCapture = null
+                    activeCameraProvider?.unbindAll()
+                    activeCameraProvider = null
+                    Log.e(TAG, "Preview binding failed", error)
+                    onComplete(error)
+                }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
     }
 
     @Suppress("MissingPermission")
@@ -126,8 +261,10 @@ class OneSecondRecorderPlugin : Plugin() {
                     val videoCapture = VideoCapture.Builder(recorder)
                         .setMirrorMode(MirrorMode.MIRROR_MODE_OFF)
                         .build()
+
                     activeVideoCapture = videoCapture
                     videoCapture.targetRotation = currentDeviceRotation
+
                     val cameraSelector = if (useFrontCamera) {
                         CameraSelector.DEFAULT_FRONT_CAMERA
                     } else {
@@ -162,11 +299,9 @@ class OneSecondRecorderPlugin : Plugin() {
                             is VideoRecordEvent.Start -> {
                                 activeRecording = recordingHolder[0]
                                 val effectiveDuration = durationMs + ENCODER_WARMUP_MS
-                                Log.i(TAG, "Recording actually started, scheduling stop in ${effectiveDuration}ms (${durationMs}ms + ${ENCODER_WARMUP_MS}ms warmup)")
                                 pendingStopRunnable = Runnable {
                                     try {
                                         recordingHolder[0]?.stop()
-                                        Log.i(TAG, "Recording auto-stopped after ${effectiveDuration}ms of actual recording")
                                     } catch (error: Exception) {
                                         Log.w(TAG, "Error stopping recording", error)
                                     }
@@ -197,10 +332,6 @@ class OneSecondRecorderPlugin : Plugin() {
                                     put("mimeType", "video/mp4")
                                     put("durationMs", durationMs)
                                 }
-                                Log.i(
-                                    TAG,
-                                    "Recording saved: ${outputFile.absolutePath} size=${outputFile.length()}",
-                                )
                                 call.resolve(result)
                             }
                         }
@@ -219,11 +350,79 @@ class OneSecondRecorderPlugin : Plugin() {
         )
     }
 
+    private fun ensurePreviewContainer() {
+        val activity = activity ?: return
+        val rootView = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        if (previewContainer == null) {
+            previewContainer = FrameLayout(activity).apply {
+                clipToOutline = true
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height, previewCornerRadiusPx)
+                    }
+                }
+                visibility = View.VISIBLE
+                isClickable = false
+            }
+        }
+
+        if (previewView == null) {
+            previewView = PreviewView(activity).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                )
+                scaleType = PreviewView.ScaleType.FILL_CENTER
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                isClickable = false
+            }
+            previewContainer?.addView(previewView)
+        }
+
+        if (previewContainer?.parent == null) {
+            rootView.addView(previewContainer)
+        }
+
+        previewContainer?.bringToFront()
+        previewContainer?.visibility = View.VISIBLE
+    }
+
+    private fun updatePreviewLayoutInternal(call: PluginCall) {
+        val container = previewContainer ?: return
+        val pixelRatio = (call.getDouble("pixelRatio") ?: 1.0).toFloat().coerceAtLeast(1f)
+        val widthPx = ((call.getDouble("width") ?: 0.0).toFloat() * pixelRatio).roundToInt()
+        val heightPx = ((call.getDouble("height") ?: 0.0).toFloat() * pixelRatio).roundToInt()
+        val leftPx = ((call.getDouble("x") ?: 0.0).toFloat() * pixelRatio).roundToInt()
+        val topPx = ((call.getDouble("y") ?: 0.0).toFloat() * pixelRatio).roundToInt()
+        previewCornerRadiusPx = ((call.getDouble("borderRadius") ?: 16.0).toFloat() * pixelRatio)
+
+        val layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
+        layoutParams.leftMargin = leftPx
+        layoutParams.topMargin = topPx
+        container.layoutParams = layoutParams
+        container.invalidateOutline()
+    }
+
     private fun clearPendingStop() {
         pendingStopRunnable?.let { runnable ->
             mainHandler.removeCallbacks(runnable)
         }
         pendingStopRunnable = null
+    }
+
+    private fun stopPreviewInternal(reason: String) {
+        try {
+            activeCameraProvider?.unbindAll()
+        } catch (error: Exception) {
+            Log.w(TAG, "Failed to stop preview due to $reason", error)
+        } finally {
+            activePreview = null
+            activeVideoCapture = null
+            activeCameraProvider = null
+        }
+
+        (previewContainer?.parent as? ViewGroup)?.removeView(previewContainer)
     }
 
     private fun stopActiveRecording(reason: String) {
@@ -253,6 +452,7 @@ class OneSecondRecorderPlugin : Plugin() {
 
     override fun handleOnPause() {
         orientationEventListener?.disable()
+        stopPreviewInternal("pause")
         stopActiveRecording("pause")
     }
 
@@ -261,6 +461,7 @@ class OneSecondRecorderPlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        stopPreviewInternal("destroy")
         stopActiveRecording("destroy")
         orientationEventListener?.disable()
         orientationEventListener = null

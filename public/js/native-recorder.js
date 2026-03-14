@@ -1,24 +1,18 @@
 // Native Recorder Adapter for Capacitor (Android)
 //
 // Uses the custom OneSecondRecorder Capacitor plugin backed by CameraX to
-// record exactly 1 second of H.264 MP4 video natively.  The resulting file
-// is uploaded directly — the server can skip re-encoding via the MP4
-// passthrough path.
-//
-// Falls back to MediaRecorder in the WebView when the native plugin is
-// unavailable (e.g. during web development).
-//
-// This module exposes a NativeRecorder class with the same public interface
-// that app.js expects from VideoRecorder, so swapping is transparent.
+// show a native Android preview and record exactly 1 second of H.264 MP4
+// video natively. Falls back to MediaRecorder when the plugin is unavailable.
 
 class NativeRecorder {
   constructor() {
+    this.stream = null;
+    this.previewSyncFrame = null;
     this.clipsCache = new Map();
     this.targetDate = null;
     this.currentFacingMode = "user";
     this.isRecording = false;
 
-    // DOM elements (same IDs as the web recorder)
     this.preview = document.getElementById("camera-preview");
     this.recordBtn = document.getElementById("record-btn");
     this.switchCameraBtn = document.getElementById("switch-camera-btn");
@@ -138,52 +132,172 @@ class NativeRecorder {
         });
   }
 
-  // ---- Lifecycle ----
-
   async init() {
     try {
+      if (!(await this.ensureNativeRecordingPermissions())) {
+        return false;
+      }
+
       this.setupEventListeners();
       this.setupVisibilityHandling();
-      // Hide orientation button on native — physical rotation controls this
+
       if (this.orientationBtn) {
         this.orientationBtn.style.display = "none";
       }
-      // Hide the video preview element — no getUserMedia on native
-      this.preview.style.display = "none";
-      // Show viewfinder UI
-      this.showViewfinder();
-      console.log("NativeRecorder initialized (Capacitor, no WebView preview)");
+
+      this.preview.style.visibility = "hidden";
+      this.preview.style.pointerEvents = "none";
+
+      await this.startCamera();
+
+      console.log("NativeRecorder initialized (CameraX preview + recording)");
       return true;
     } catch (error) {
       console.error("Failed to initialize NativeRecorder:", error);
-      showToast("Camera initialization failed.", "error");
+      showToast("Camera access denied. Please allow camera access.", "error");
       return false;
     }
   }
 
-  showViewfinder() {
+  showViewfinder(label = "Ready to record") {
     const container = document.querySelector(".camera-container");
     if (!container || document.getElementById("native-viewfinder")) return;
-    const vf = document.createElement("div");
-    vf.id = "native-viewfinder";
-    vf.className = "native-viewfinder";
-    vf.innerHTML =
-      '<span class="material-symbols-rounded">videocam</span><p>Ready to record</p>';
-    container.insertBefore(vf, container.firstChild);
+    const viewfinder = document.createElement("div");
+    viewfinder.id = "native-viewfinder";
+    viewfinder.className = "native-viewfinder";
+    viewfinder.innerHTML = `<span class="material-symbols-rounded">videocam</span><p>${label}</p>`;
+    container.insertBefore(viewfinder, container.firstChild);
   }
 
   hideViewfinder() {
-    const vf = document.getElementById("native-viewfinder");
-    if (vf) vf.remove();
+    const viewfinder = document.getElementById("native-viewfinder");
+    if (viewfinder) {
+      viewfinder.remove();
+    }
   }
 
-  // No getUserMedia on native — camera is CameraX only
-  async startCamera() {
-    // no-op on native
+  getPreviewBounds() {
+    const container = document.querySelector(".camera-container");
+    if (!container) {
+      return null;
+    }
+
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const styles = window.getComputedStyle(container);
+    const borderRadius = Number.parseFloat(styles.borderTopLeftRadius) || 16;
+
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+      borderRadius,
+      pixelRatio: window.devicePixelRatio || 1,
+    };
   }
 
-  stopCamera() {
-    // no-op on native — no WebView stream to stop
+  schedulePreviewSync() {
+    if (this.previewSyncFrame !== null) {
+      cancelAnimationFrame(this.previewSyncFrame);
+    }
+
+    this.previewSyncFrame = requestAnimationFrame(async () => {
+      this.previewSyncFrame = null;
+
+      if (this.isRecording || this.isDayRecorded() || document.hidden) {
+        return;
+      }
+
+      const plugin = this.getNativeRecorderPlugin();
+      const bounds = this.getPreviewBounds();
+      if (!plugin || !bounds) {
+        return;
+      }
+
+      try {
+        await plugin.updatePreviewLayout(bounds);
+      } catch (error) {
+        console.error("Failed to update native preview layout:", error);
+      }
+    });
+  }
+
+  async startCamera(facingMode = this.currentFacingMode) {
+    const plugin = this.getNativeRecorderPlugin();
+    if (plugin) {
+      const bounds = this.getPreviewBounds();
+      if (!bounds) {
+        this.showViewfinder();
+        return;
+      }
+
+      await plugin.startPreview({
+        ...bounds,
+        useFrontCamera: facingMode === "user",
+      });
+
+      this.currentFacingMode = facingMode;
+      this.hideViewfinder();
+      return;
+    }
+
+    if (this.stream) {
+      this.stream.getTracks().forEach((track) => track.stop());
+    }
+
+    const constraints = {
+      video: {
+        width: { ideal: 1080 },
+        height: { ideal: 1920 },
+        facingMode: { exact: facingMode },
+        frameRate: { ideal: 30, min: 24 },
+      },
+      audio: false,
+    };
+
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.currentFacingMode = facingMode;
+    } catch {
+      const fallback = {
+        video: {
+          width: { ideal: 1080 },
+          height: { ideal: 1920 },
+          facingMode,
+          frameRate: { ideal: 30, min: 15 },
+        },
+        audio: false,
+      };
+      this.stream = await navigator.mediaDevices.getUserMedia(fallback);
+      this.currentFacingMode = facingMode;
+    }
+
+    this.preview.srcObject = this.stream;
+    this.preview.style.visibility = "visible";
+    this.preview.style.transform = facingMode === "user" ? "scaleX(-1)" : "";
+    this.hideViewfinder();
+  }
+
+  async stopCamera() {
+    const plugin = this.getNativeRecorderPlugin();
+    if (plugin) {
+      try {
+        await plugin.stopPreview();
+      } catch (error) {
+        console.error("Failed to stop native preview:", error);
+      }
+      return;
+    }
+
+    if (this.stream) {
+      this.stream.getTracks().forEach((track) => track.stop());
+      this.stream = null;
+    }
+    this.preview.srcObject = null;
   }
 
   async resumePreview() {
@@ -192,15 +306,24 @@ class NativeRecorder {
       this.updateRecordingState(true);
       return;
     }
-    this.showViewfinder();
-    this.updateRecordingState(false);
+
+    try {
+      await this.startCamera();
+      this.updateRecordingState(false);
+    } catch (error) {
+      console.error("Failed to resume native preview:", error);
+      throw error;
+    }
   }
 
   destroy() {
-    // no-op — no WebView stream
-  }
+    if (this.previewSyncFrame !== null) {
+      cancelAnimationFrame(this.previewSyncFrame);
+      this.previewSyncFrame = null;
+    }
 
-  // ---- Cache / date helpers (same as VideoRecorder) ----
+    void this.stopCamera();
+  }
 
   setClipsCache(clips) {
     this.clipsCache.clear();
@@ -221,8 +344,6 @@ class NativeRecorder {
     return this.clipsCache.has(this.getTargetDate());
   }
 
-  // ---- UI state (matches VideoRecorder interface) ----
-
   updateRecordingState(dayRecorded) {
     const cameraOffOverlay = document.getElementById("camera-off-overlay");
     if (dayRecorded) {
@@ -230,13 +351,15 @@ class NativeRecorder {
       this.recordBtn.classList.add("disabled");
       this.switchCameraBtn.disabled = true;
       this.switchCameraBtn.classList.add("disabled");
-      this.hideViewfinder();
+      void this.stopCamera();
+      this.showViewfinder("Already recorded for this day");
       if (cameraOffOverlay) cameraOffOverlay.classList.remove("hidden");
     } else {
       this.recordBtn.disabled = false;
       this.recordBtn.classList.remove("disabled");
       this.switchCameraBtn.disabled = false;
       this.switchCameraBtn.classList.remove("disabled");
+      this.hideViewfinder();
       if (cameraOffOverlay) cameraOffOverlay.classList.add("hidden");
     }
   }
@@ -250,11 +373,7 @@ class NativeRecorder {
     }
   }
 
-  updateOrientationIcon() {
-    // No orientation toggle on native
-  }
-
-  // ---- Event listeners ----
+  updateOrientationIcon() {}
 
   setupEventListeners() {
     this.recordBtn.addEventListener("click", () => this.handleRecordClick());
@@ -262,24 +381,39 @@ class NativeRecorder {
   }
 
   setupVisibilityHandling() {
+    const syncPreview = () => this.schedulePreviewSync();
+
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && !this.isRecording && !this.isDayRecorded()) {
-        this.showViewfinder();
+      if (document.hidden) {
+        if (!this.isRecording) {
+          void this.stopCamera();
+        }
+      } else if (!this.isRecording && !this.isDayRecorded()) {
+        void this.resumePreview();
       }
     });
+
+    window.addEventListener("resize", syncPreview);
+    window.addEventListener("orientationchange", syncPreview);
+    window.visualViewport?.addEventListener("resize", syncPreview);
+    window.visualViewport?.addEventListener("scroll", syncPreview);
+    window.addEventListener("beforeunload", () => this.destroy());
   }
 
   async switchCamera() {
     if (this.isDayRecorded()) return;
-    this.currentFacingMode =
+    const newFacingMode =
       this.currentFacingMode === "user" ? "environment" : "user";
-    showToast(
-      `Switched to ${this.currentFacingMode === "user" ? "front" : "back"} camera`,
-      "success",
-    );
+    try {
+      await this.startCamera(newFacingMode);
+      showToast(
+        `Switched to ${newFacingMode === "user" ? "front" : "back"} camera`,
+        "success",
+      );
+    } catch {
+      showToast("Could not switch camera", "error");
+    }
   }
-
-  // ---- Recording (native path) ----
 
   async handleRecordClick() {
     if (this.isRecording) return;
@@ -299,14 +433,14 @@ class NativeRecorder {
   async startCountdownAndRecord() {
     this.setRecordingEnabled(false);
 
-    // Ensure native camera + microphone permissions are granted before countdown.
     const OneSecondRecorder = this.getNativeRecorderPlugin();
     if (!(await this.ensureNativeRecordingPermissions())) {
       this.setRecordingEnabled(true);
       return;
     }
 
-    // Countdown
+    await this.stopCamera();
+
     for (let i = CONFIG.VIDEO_COUNTDOWN_SECONDS; i > 0; i--) {
       this.countdownEl.textContent = i;
       this.countdownEl.classList.remove("hidden");
@@ -314,15 +448,12 @@ class NativeRecorder {
     }
     this.countdownEl.classList.add("hidden");
 
-    // ---- Native capture via custom OneSecondRecorder CameraX plugin ----
     this.isRecording = true;
     this.recordBtn.classList.add("recording");
     this.recordingIndicator.classList.remove("hidden");
 
     try {
       if (OneSecondRecorder) {
-        this.hideViewfinder();
-
         const result = await OneSecondRecorder.record({
           durationMs: CONFIG.VIDEO_DURATION_MS,
           useFrontCamera: this.currentFacingMode === "user",
@@ -333,11 +464,9 @@ class NativeRecorder {
 
         await this.uploadRecording(blob);
       } else {
-        // Fallback: record with MediaRecorder in the WebView
         console.warn(
           "OneSecondRecorder plugin unavailable, using MediaRecorder fallback",
         );
-        await this.startCamera();
         await this.recordWithMediaRecorder();
       }
     } catch (error) {
@@ -348,13 +477,20 @@ class NativeRecorder {
       this.isRecording = false;
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");
-      if (!this.isDayRecorded()) {
-        this.showViewfinder();
+
+      if (!this.isDayRecorded() && !document.hidden) {
+        try {
+          await this.startCamera();
+        } catch (error) {
+          console.error(
+            "Failed to restart preview after native recording:",
+            error,
+          );
+        }
       }
     }
   }
 
-  // MediaRecorder fallback (same as web recorder logic)
   async recordWithMediaRecorder() {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -372,8 +508,8 @@ class NativeRecorder {
     const options = mimeType ? { mimeType } : {};
     const recorder = new MediaRecorder(stream, options);
 
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
     };
 
     await new Promise((resolve) => {
@@ -391,7 +527,7 @@ class NativeRecorder {
       recorder.stop();
     });
 
-    stream.getTracks().forEach((t) => t.stop());
+    stream.getTracks().forEach((track) => track.stop());
     await this.uploadRecording(blob);
   }
 
@@ -402,9 +538,11 @@ class NativeRecorder {
       "video/webm",
       "video/mp4",
     ];
+
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) return type;
     }
+
     return null;
   }
 

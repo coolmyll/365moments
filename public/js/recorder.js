@@ -376,6 +376,19 @@ class VideoRecorder {
     return null;
   }
 
+  getUploadMimeType(mimeType) {
+    const normalizedMimeType = String(mimeType || "video/webm")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+
+    if (normalizedMimeType === "video/mp4") {
+      return "video/mp4";
+    }
+
+    return "video/webm";
+  }
+
   async stopRecording() {
     return new Promise((resolve) => {
       this.mediaRecorder.onstop = async () => {
@@ -383,7 +396,9 @@ class VideoRecorder {
         this.recordBtn.classList.remove("recording");
         this.recordingIndicator.classList.add("hidden");
 
-        const mimeType = this.mediaRecorder.mimeType || "video/webm";
+        const mimeType = this.getUploadMimeType(
+          this.mediaRecorder.mimeType || "video/webm",
+        );
         const blob = new Blob(this.chunks, { type: mimeType });
 
         console.log("Recording stopped, blob size:", blob.size);
@@ -407,9 +422,16 @@ class VideoRecorder {
 
     try {
       const targetDate = this.getTargetDate();
-      const fileName = `${targetDate}.webm`;
+      const mimeType = this.getUploadMimeType(blob.type);
+      const uploadBlob =
+        blob.type === mimeType
+          ? blob
+          : new Blob([blob], {
+              type: mimeType,
+            });
+      const fileName = `${targetDate}${mimeType === "video/mp4" ? ".mp4" : ".webm"}`;
 
-      const result = await API.uploadClip(blob, fileName);
+      const result = await API.uploadClip(uploadBlob, fileName);
 
       const dateDisplay = CONFIG.formatDateStringForDisplay(targetDate);
       if (typeof app !== "undefined" && app.stopUploadingDelight) {
