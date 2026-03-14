@@ -193,6 +193,7 @@ class NativeRecorder {
     }
 
     this.preview.srcObject = this.stream;
+    this.preview.style.display = "";
     this.preview.style.transform = facingMode === "user" ? "scaleX(-1)" : "";
   }
 
@@ -202,6 +203,7 @@ class NativeRecorder {
       this.stream = null;
     }
     this.preview.srcObject = null;
+    this.preview.style.display = "none";
   }
 
   async resumePreview() {

@@ -988,7 +988,6 @@ app.post(
       req.body.captureOrientation === "landscape"
         ? req.body.captureOrientation
         : null;
-    const normalizeNativeAndroidUpload = captureSource === "native-android";
     const inputPath = path.join(TEMP_DIR, `input-${uniqueId}${inputExt}`);
     const outputPath = path.join(TEMP_DIR, `output-${uniqueId}.mp4`);
 
@@ -997,10 +996,7 @@ app.post(
       fs.writeFileSync(inputPath, req.file.buffer);
 
       // Check if already H.264 MP4 — skip conversion if so
-      const alreadyMp4 =
-        isUploadMp4 &&
-        probeIsH264Mp4(inputPath) &&
-        !normalizeNativeAndroidUpload;
+      const alreadyMp4 = isUploadMp4 && probeIsH264Mp4(inputPath);
 
       const finalVideoPath = alreadyMp4 ? inputPath : outputPath;
 
@@ -1037,7 +1033,6 @@ app.post(
               userName,
               captureSource,
               captureOrientation,
-              normalizeNativeAndroidUpload,
             }),
             ffmpegPath,
           });

@@ -47,7 +47,6 @@ class OneSecondRecorderPlugin : Plugin() {
     private var activeVideoCapture: VideoCapture<Recorder>? = null
     private var pendingStopRunnable: Runnable? = null
     private var currentDeviceRotation = Surface.ROTATION_0
-    private var requestedOutputOrientation = DEFAULT_ORIENTATION
     private var orientationEventListener: OrientationEventListener? = null
 
     override fun load() {
@@ -65,8 +64,7 @@ class OneSecondRecorderPlugin : Plugin() {
                     else -> Surface.ROTATION_0
                 }
 
-                activeVideoCapture?.targetRotation =
-                    resolveTargetRotation(requestedOutputOrientation)
+                activeVideoCapture?.targetRotation = currentDeviceRotation
             }
         }
         orientationEventListener?.enable()
@@ -97,7 +95,6 @@ class OneSecondRecorderPlugin : Plugin() {
         activity.runOnUiThread {
             try {
                 stopActiveRecording("restart")
-                requestedOutputOrientation = orientation
                 startRecording(call, durationMs, useFrontCamera, orientation)
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to start recording", error)
@@ -142,7 +139,7 @@ class OneSecondRecorderPlugin : Plugin() {
                         .setMirrorMode(MirrorMode.MIRROR_MODE_OFF)
                         .build()
                     activeVideoCapture = videoCapture
-                    videoCapture.targetRotation = resolveTargetRotation(orientation)
+                    videoCapture.targetRotation = currentDeviceRotation
                     val cameraSelector = if (useFrontCamera) {
                         CameraSelector.DEFAULT_FRONT_CAMERA
                     } else {
@@ -176,16 +173,17 @@ class OneSecondRecorderPlugin : Plugin() {
                         when (videoRecordEvent) {
                             is VideoRecordEvent.Start -> {
                                 activeRecording = recordingHolder[0]
-                                Log.i(TAG, "Recording actually started, scheduling stop in ${durationMs}ms")
+                                val effectiveDuration = durationMs + ENCODER_WARMUP_MS
+                                Log.i(TAG, "Recording actually started, scheduling stop in ${effectiveDuration}ms (${durationMs}ms + ${ENCODER_WARMUP_MS}ms warmup)")
                                 pendingStopRunnable = Runnable {
                                     try {
                                         recordingHolder[0]?.stop()
-                                        Log.i(TAG, "Recording auto-stopped after ${durationMs}ms of actual recording")
+                                        Log.i(TAG, "Recording auto-stopped after ${effectiveDuration}ms of actual recording")
                                     } catch (error: Exception) {
                                         Log.w(TAG, "Error stopping recording", error)
                                     }
                                 }
-                                mainHandler.postDelayed(pendingStopRunnable!!, durationMs.toLong())
+                                mainHandler.postDelayed(pendingStopRunnable!!, effectiveDuration.toLong())
                             }
 
                             is VideoRecordEvent.Finalize -> {
@@ -282,33 +280,13 @@ class OneSecondRecorderPlugin : Plugin() {
         cameraExecutor = null
     }
 
-    private fun resolveTargetRotation(orientation: String): Int {
-        val currentIsPortrait =
-            currentDeviceRotation == Surface.ROTATION_0 ||
-                currentDeviceRotation == Surface.ROTATION_180
-        val wantsPortrait = orientation == ORIENTATION_PORTRAIT
-
-        if (wantsPortrait == currentIsPortrait) {
-            return currentDeviceRotation
-        }
-
-        return rotateClockwiseQuarterTurn(currentDeviceRotation)
-    }
-
-    private fun rotateClockwiseQuarterTurn(rotation: Int): Int = when (rotation) {
-        Surface.ROTATION_0 -> Surface.ROTATION_90
-        Surface.ROTATION_90 -> Surface.ROTATION_180
-        Surface.ROTATION_180 -> Surface.ROTATION_270
-        Surface.ROTATION_270 -> Surface.ROTATION_0
-        else -> Surface.ROTATION_0
-    }
-
     private companion object {
         private const val TAG = "OneSecondRecorder"
         private const val DEFAULT_DURATION_MS = 1000
         private const val MIN_DURATION_MS = 700
         private const val MAX_DURATION_MS = 5000
         private const val SENSOR_DELAY_NORMAL = 3
+        private const val ENCODER_WARMUP_MS = 300
         private const val ORIENTATION_PORTRAIT = "portrait"
         private const val ORIENTATION_LANDSCAPE = "landscape"
         private const val DEFAULT_ORIENTATION = ORIENTATION_LANDSCAPE
