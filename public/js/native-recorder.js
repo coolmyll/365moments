@@ -404,6 +404,7 @@ class NativeRecorder {
         const result = await OneSecondRecorder.record({
           durationMs: CONFIG.VIDEO_DURATION_MS, // timer starts from actual CameraX Start event
           useFrontCamera: this.currentFacingMode === "user",
+          orientation: this.currentOrientation,
         });
 
         const recordingResult = this.validateNativeRecordingResult(result);

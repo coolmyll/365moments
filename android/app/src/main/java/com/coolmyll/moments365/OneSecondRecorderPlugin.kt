@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
@@ -50,9 +51,15 @@ class OneSecondRecorderPlugin : Plugin() {
     fun record(call: PluginCall) {
         val durationMs = call.getInt("durationMs") ?: DEFAULT_DURATION_MS
         val useFrontCamera = call.getBoolean("useFrontCamera") ?: false
+        val orientation = call.getString("orientation") ?: DEFAULT_ORIENTATION
 
         if (durationMs < MIN_DURATION_MS || durationMs > MAX_DURATION_MS) {
             call.reject("durationMs must be between $MIN_DURATION_MS and $MAX_DURATION_MS")
+            return
+        }
+
+        if (orientation != ORIENTATION_PORTRAIT && orientation != ORIENTATION_LANDSCAPE) {
+            call.reject("orientation must be portrait or landscape")
             return
         }
 
@@ -65,7 +72,7 @@ class OneSecondRecorderPlugin : Plugin() {
         activity.runOnUiThread {
             try {
                 stopActiveRecording("restart")
-                startRecording(call, durationMs, useFrontCamera)
+                startRecording(call, durationMs, useFrontCamera, orientation)
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to start recording", error)
                 call.reject("Recording failed: ${error.message}")
@@ -74,7 +81,12 @@ class OneSecondRecorderPlugin : Plugin() {
     }
 
     @Suppress("MissingPermission")
-    private fun startRecording(call: PluginCall, durationMs: Int, useFrontCamera: Boolean) {
+    private fun startRecording(
+        call: PluginCall,
+        durationMs: Int,
+        useFrontCamera: Boolean,
+        orientation: String,
+    ) {
         val context = context
         val activity = activity
 
@@ -101,6 +113,7 @@ class OneSecondRecorderPlugin : Plugin() {
                         .build()
 
                     val videoCapture = VideoCapture.withOutput(recorder)
+                    videoCapture.targetRotation = resolveTargetRotation(orientation)
                     val cameraSelector = if (useFrontCamera) {
                         CameraSelector.DEFAULT_FRONT_CAMERA
                     } else {
@@ -229,10 +242,34 @@ class OneSecondRecorderPlugin : Plugin() {
         cameraExecutor = null
     }
 
+    private fun resolveTargetRotation(orientation: String): Int {
+        val currentRotation = activity?.display?.rotation ?: Surface.ROTATION_0
+        val currentIsPortrait =
+            currentRotation == Surface.ROTATION_0 || currentRotation == Surface.ROTATION_180
+        val wantsPortrait = orientation == ORIENTATION_PORTRAIT
+
+        if (wantsPortrait == currentIsPortrait) {
+            return currentRotation
+        }
+
+        return rotateQuarterTurn(currentRotation)
+    }
+
+    private fun rotateQuarterTurn(rotation: Int): Int = when (rotation) {
+        Surface.ROTATION_0 -> Surface.ROTATION_90
+        Surface.ROTATION_90 -> Surface.ROTATION_180
+        Surface.ROTATION_180 -> Surface.ROTATION_270
+        Surface.ROTATION_270 -> Surface.ROTATION_0
+        else -> Surface.ROTATION_0
+    }
+
     private companion object {
         private const val TAG = "OneSecondRecorder"
         private const val DEFAULT_DURATION_MS = 1000
         private const val MIN_DURATION_MS = 700
         private const val MAX_DURATION_MS = 5000
+        private const val ORIENTATION_PORTRAIT = "portrait"
+        private const val ORIENTATION_LANDSCAPE = "landscape"
+        private const val DEFAULT_ORIENTATION = ORIENTATION_LANDSCAPE
     }
 }
