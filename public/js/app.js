@@ -5,8 +5,12 @@ class App {
     this.recorder = null;
     this.user = null;
     this.clips = [];
+    this.clipsByDate = new Map();
     this.selectedMusicData = null;
     this.selectedMusicTitle = null;
+    this.uploadPreviewUrl = null;
+    this.activeModalId = null;
+    this.lastFocusedElement = null;
     this.screens = {
       loading: document.getElementById("loading-screen"),
       auth: document.getElementById("auth-screen"),
@@ -64,14 +68,29 @@ class App {
       const isOpen = !profileDropdown.classList.contains("hidden");
       profileDropdown.classList.toggle("hidden");
       chevron.classList.toggle("open", !isOpen);
+      userInfoBtn.setAttribute("aria-expanded", String(!isOpen));
+    });
+
+    userInfoBtn.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") {
+        return;
+      }
+
+      e.preventDefault();
+      userInfoBtn.click();
     });
 
     // Close dropdown when clicking outside
     document.addEventListener("click", () => {
       profileDropdown.classList.add("hidden");
       chevron.classList.remove("open");
+      userInfoBtn.setAttribute("aria-expanded", "false");
     });
     profileDropdown.addEventListener("click", (e) => e.stopPropagation());
+
+    document.addEventListener("keydown", (e) => {
+      this.handleGlobalKeydown(e);
+    });
 
     // Signout
     document
@@ -92,7 +111,7 @@ class App {
     document
       .getElementById("close-settings-btn")
       .addEventListener("click", () => {
-        document.getElementById("settings-modal").classList.add("hidden");
+        this.closeSettings();
       });
 
     document
@@ -147,6 +166,13 @@ class App {
       if (this.recorder) {
         await this.recorder.resumePreview();
       }
+    });
+
+    document.getElementById("calendar-view").addEventListener("click", (e) => {
+      const dayButton = e.target.closest("[data-gallery-date]");
+      if (!dayButton) return;
+
+      this.handleGalleryDaySelection(dayButton.dataset.galleryDate);
     });
 
     // Gallery
@@ -308,6 +334,7 @@ class App {
     try {
       const data = await API.getClips();
       this.clips = data.clips || [];
+      this.rebuildClipIndexes();
       console.log(`Loaded ${this.clips.length} clips`);
 
       if (this.recorder) {
@@ -318,6 +345,123 @@ class App {
       console.error("Failed to load clips:", error);
       return false;
     }
+  }
+
+  rebuildClipIndexes() {
+    this.clipsByDate = new Map();
+
+    this.clips.forEach((clip) => {
+      if (!clip?.date) return;
+      this.clipsByDate.set(clip.date, clip);
+    });
+  }
+
+  getClipForDate(dateString) {
+    return this.clipsByDate.get(dateString) || null;
+  }
+
+  getFocusableElement(container, preferredSelector = null) {
+    if (!container) return null;
+
+    if (preferredSelector) {
+      const preferred = container.querySelector(preferredSelector);
+      if (preferred) return preferred;
+    }
+
+    return container.querySelector(
+      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+    );
+  }
+
+  openModal(modalId, preferredSelector = null) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    this.lastFocusedElement =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    this.activeModalId = modalId;
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    modal.scrollTop = 0;
+
+    const focusTarget =
+      this.getFocusableElement(modal, preferredSelector) || modal;
+    requestAnimationFrame(() => {
+      focusTarget.focus();
+    });
+  }
+
+  closeModal(modalId, { restoreFocus = true } = {}) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+
+    if (this.activeModalId === modalId) {
+      this.activeModalId = null;
+    }
+
+    if (
+      restoreFocus &&
+      this.lastFocusedElement &&
+      this.lastFocusedElement.isConnected
+    ) {
+      this.lastFocusedElement.focus();
+    }
+
+    this.lastFocusedElement = null;
+  }
+
+  handleGlobalKeydown(event) {
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    const dropdown = document.getElementById("profile-dropdown");
+    if (this.activeModalId) {
+      event.preventDefault();
+      switch (this.activeModalId) {
+        case "video-preview-modal":
+          this.closeVideoModal();
+          break;
+        case "day-options-modal":
+          this.closeDayOptionsModal();
+          break;
+        case "compile-modal":
+          this.closeCompileModal();
+          break;
+        case "compilations-modal":
+          this.closeCompilationsModal();
+          break;
+        case "upload-modal":
+          this.closeUploadModal();
+          break;
+        case "settings-modal":
+          this.closeSettings();
+          break;
+        default:
+          this.closeModal(this.activeModalId);
+      }
+      return;
+    }
+
+    if (dropdown && !dropdown.classList.contains("hidden")) {
+      dropdown.classList.add("hidden");
+      document
+        .querySelector("#user-info-btn .header-chevron")
+        ?.classList.remove("open");
+      document
+        .getElementById("user-info-btn")
+        ?.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  handleGalleryDaySelection(dateString) {
+    if (!dateString) return;
+    this.showDayOptions(dateString, this.getClipForDate(dateString));
   }
 
   showScreen(screenName) {
@@ -495,17 +639,9 @@ class App {
     document.getElementById("current-streak").textContent =
       this.calculateStreak();
 
-    // Create clips map for quick lookup
-    const clipsMap = new Map();
-    this.clips.forEach((clip) => {
-      if (clip.date) {
-        clipsMap.set(clip.date, clip);
-      }
-    });
-
     // Render calendar
     const calendarView = document.getElementById("calendar-view");
-    calendarView.innerHTML = "";
+    const calendarFragment = document.createDocumentFragment();
 
     const months = [
       "January",
@@ -525,7 +661,7 @@ class App {
     const today = new Date();
 
     months.forEach((monthName, monthIndex) => {
-      const monthSection = document.createElement("div");
+      const monthSection = document.createElement("section");
       monthSection.className = "month-section";
 
       const monthHeader = document.createElement("h3");
@@ -550,12 +686,21 @@ class App {
       for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, monthIndex, day);
         const dateString = CONFIG.formatDateForFile(date);
-        const clip = clipsMap.get(dateString);
+        const clip = this.getClipForDate(dateString);
 
-        const dayCell = document.createElement("div");
+        const isFutureDay = date > today;
+        const isInteractive = !isFutureDay;
+        const dayCell = document.createElement(
+          isInteractive ? "button" : "div",
+        );
         dayCell.className = "day-cell";
 
-        if (date > today) {
+        if (isInteractive) {
+          dayCell.type = "button";
+          dayCell.dataset.galleryDate = dateString;
+        }
+
+        if (isFutureDay) {
           dayCell.textContent = day;
           dayCell.classList.add("future");
         } else if (clip) {
@@ -567,6 +712,8 @@ class App {
             thumb.src = clip.thumbnail;
             thumb.className = "day-thumbnail";
             thumb.alt = "";
+            thumb.loading = "lazy";
+            thumb.decoding = "async";
             dayCell.appendChild(thumb);
           }
 
@@ -575,17 +722,17 @@ class App {
           dayNum.className = "day-number";
           dayNum.textContent = day;
           dayCell.appendChild(dayNum);
-
-          dayCell.addEventListener("click", () =>
-            this.showDayOptions(dateString, clip),
-          );
         } else {
           dayCell.textContent = day;
           dayCell.classList.add("no-video");
-          // Add click handler for past days without video
-          dayCell.addEventListener("click", () =>
-            this.showDayOptions(dateString, null),
-          );
+        }
+
+        if (isInteractive) {
+          const formattedDate = CONFIG.formatDateStringForDisplay(dateString);
+          const label = clip
+            ? `${formattedDate}. ${clip.type === "image" ? "Image saved" : "Video saved"}. Activate for options.`
+            : `${formattedDate}. No moment recorded yet. Activate to record or upload.`;
+          dayCell.setAttribute("aria-label", label);
         }
 
         if (date.toDateString() === today.toDateString()) {
@@ -596,8 +743,10 @@ class App {
       }
 
       monthSection.appendChild(daysGrid);
-      calendarView.appendChild(monthSection);
+      calendarFragment.appendChild(monthSection);
     });
+
+    calendarView.replaceChildren(calendarFragment);
   }
 
   showDayOptions(dateString, clip) {
@@ -681,12 +830,11 @@ class App {
       buttonsContainer.appendChild(uploadBtn);
     }
 
-    modal.classList.remove("hidden");
+    this.openModal("day-options-modal", ".day-option-btn");
   }
 
   closeDayOptionsModal() {
-    const modal = document.getElementById("day-options-modal");
-    modal.classList.add("hidden");
+    this.closeModal("day-options-modal");
   }
 
   async deleteClip(clip) {
@@ -712,7 +860,7 @@ class App {
     const image = document.getElementById("preview-image");
     const dateDisplay = document.getElementById("preview-date");
 
-    modal.classList.remove("hidden");
+    this.openModal("video-preview-modal", "#close-modal");
 
     const isImage = clip.type === "image";
     if (isImage) {
@@ -744,7 +892,7 @@ class App {
     video.pause();
     video.src = "";
     image.src = "";
-    modal.classList.add("hidden");
+    this.closeModal("video-preview-modal");
   }
 
   // ============ COMPILE MODAL ============
@@ -785,11 +933,11 @@ class App {
     endInput.max = maxDate;
 
     this.updateCompileClipCount();
-    modal.classList.remove("hidden");
+    this.openModal("compile-modal", "#compile-start-date");
   }
 
   closeCompileModal() {
-    document.getElementById("compile-modal").classList.add("hidden");
+    this.closeModal("compile-modal");
     // Reset music selection when closing modal
     this.clearSelectedMusic();
   }
@@ -959,7 +1107,7 @@ class App {
     const modal = document.getElementById("compilations-modal");
     if (!modal) return;
 
-    modal.classList.remove("hidden");
+    this.openModal("compilations-modal", ".close-btn");
     await this.loadCompilationsList({ showLoading: true });
   }
 
@@ -1051,7 +1199,7 @@ class App {
   }
 
   closeCompilationsModal() {
-    document.getElementById("compilations-modal").classList.add("hidden");
+    this.closeModal("compilations-modal");
   }
 
   playCompilation(id) {
@@ -1100,7 +1248,7 @@ class App {
 
     this.selectedFile = null;
 
-    modal.classList.remove("hidden");
+    this.openModal("upload-modal", "#video-file-input");
   }
 
   closeUploadModal() {
@@ -1111,7 +1259,13 @@ class App {
     videoPreview.pause();
     videoPreview.src = "";
     imagePreview.src = "";
-    modal.classList.add("hidden");
+
+    if (this.uploadPreviewUrl) {
+      URL.revokeObjectURL(this.uploadPreviewUrl);
+      this.uploadPreviewUrl = null;
+    }
+
+    this.closeModal("upload-modal");
   }
 
   handleFileSelect(file) {
@@ -1134,7 +1288,12 @@ class App {
     // Show appropriate preview
     const videoPreview = document.getElementById("upload-preview");
     const imagePreview = document.getElementById("upload-preview-image");
+    if (this.uploadPreviewUrl) {
+      URL.revokeObjectURL(this.uploadPreviewUrl);
+    }
+
     const fileUrl = URL.createObjectURL(file);
+    this.uploadPreviewUrl = fileUrl;
 
     if (isImage) {
       videoPreview.classList.add("hidden");
@@ -1280,7 +1439,11 @@ class App {
       opts.classList.add("disabled");
     }
 
-    document.getElementById("settings-modal").classList.remove("hidden");
+    this.openModal("settings-modal", "#reminder-enabled");
+  }
+
+  closeSettings() {
+    this.closeModal("settings-modal");
   }
 
   async saveReminderSettings() {
@@ -1304,7 +1467,7 @@ class App {
       showToast("Reminders disabled", "success");
     }
 
-    document.getElementById("settings-modal").classList.add("hidden");
+    this.closeSettings();
   }
 }
 

@@ -11,7 +11,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0"
     />
-    <link rel="stylesheet" href="/styles.css?v=18" />
+    <link rel="stylesheet" href="/styles.css?v=19" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#1a1a2e" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
@@ -96,7 +96,15 @@
       <!-- Main Recording Screen -->
       <div id="main-screen" class="screen">
         <header>
-          <div class="user-info" id="user-info-btn">
+          <div
+            class="user-info"
+            id="user-info-btn"
+            role="button"
+            tabindex="0"
+            aria-label="Open profile menu"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
             <img id="user-avatar" src="" alt="User" />
             <span class="material-symbols-rounded header-chevron"
               >expand_more</span
@@ -132,7 +140,12 @@
           </div>
 
           <div class="header-actions">
-            <button id="gallery-btn" class="icon-btn" title="View Gallery">
+            <button
+              id="gallery-btn"
+              class="icon-btn"
+              title="View Gallery"
+              aria-label="Open gallery"
+            >
               <span class="material-symbols-rounded">photo_library</span>
             </button>
           </div>
@@ -197,7 +210,7 @@
       <!-- Gallery Screen -->
       <div id="gallery-screen" class="screen">
         <header>
-          <button id="back-btn" class="icon-btn">
+          <button id="back-btn" class="icon-btn" aria-label="Back to camera">
             <span class="material-symbols-rounded">arrow_back</span>
           </button>
           <h2>Your Moments</h2>
@@ -206,10 +219,16 @@
               id="compilations-btn"
               class="icon-btn"
               title="View Compilations"
+              aria-label="Open compilations"
             >
               <span class="material-symbols-rounded">video_library</span>
             </button>
-            <button id="compile-btn" class="icon-btn" title="Create Year Video">
+            <button
+              id="compile-btn"
+              class="icon-btn"
+              title="Create Year Video"
+              aria-label="Create compilation"
+            >
               <span class="material-symbols-rounded">movie_edit</span>
             </button>
           </div>
@@ -232,7 +251,15 @@
       </div>
 
       <!-- Modals - outside of screens to avoid visibility issues -->
-      <div id="video-preview-modal" class="modal hidden">
+      <div
+        id="video-preview-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="preview-date"
+        tabindex="-1"
+      >
         <div class="modal-content">
           <button id="close-modal" class="close-btn">✕</button>
           <video id="preview-video" controls preload="metadata"></video>
@@ -242,7 +269,15 @@
       </div>
 
       <!-- Day Options Modal -->
-      <div id="day-options-modal" class="modal hidden">
+      <div
+        id="day-options-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="day-options-title"
+        tabindex="-1"
+      >
         <div class="modal-content day-options-content">
           <button id="close-day-options" class="close-btn">✕</button>
           <h3 id="day-options-title">January 1, 2025</h3>
@@ -253,10 +288,18 @@
       </div>
 
       <!-- Compile Modal -->
-      <div id="compile-modal" class="modal hidden">
+      <div
+        id="compile-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="compile-modal-title"
+        tabindex="-1"
+      >
         <div class="modal-content">
           <div class="modal-header">
-            <h3>Create Compilation</h3>
+            <h3 id="compile-modal-title">Create Compilation</h3>
             <button class="close-btn" onclick="app.closeCompileModal()">
               ✕
             </button>
@@ -309,7 +352,15 @@
       </div>
 
       <!-- Uploading Progress Modal -->
-      <div id="uploading-modal" class="modal hidden">
+      <div
+        id="uploading-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="uploading-title"
+        tabindex="-1"
+      >
         <div class="modal-content uploading-modal-content">
           <div class="uploading-animation">
             <div class="spinner large"></div>
@@ -325,10 +376,18 @@
       </div>
 
       <!-- Upload Modal -->
-      <div id="upload-modal" class="modal hidden">
+      <div
+        id="upload-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="upload-modal-title"
+        tabindex="-1"
+      >
         <div class="modal-content upload-modal-content">
           <button id="close-upload-modal" class="close-btn">✕</button>
-          <h3>Upload Video</h3>
+          <h3 id="upload-modal-title">Upload Video</h3>
           <p>
             Select a video or image and choose which date it's for. Videos will
             be trimmed to 1 second. Images will be shown for 1 second in
@@ -374,10 +433,18 @@
       </div>
 
       <!-- Compilations Modal -->
-      <div id="compilations-modal" class="modal hidden">
+      <div
+        id="compilations-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="compilations-modal-title"
+        tabindex="-1"
+      >
         <div class="modal-content">
           <div class="modal-header">
-            <h3>Your Compilations</h3>
+            <h3 id="compilations-modal-title">Your Compilations</h3>
             <button class="close-btn" onclick="app.closeCompilationsModal()">
               ✕
             </button>
@@ -385,6 +452,8 @@
           <div
             id="compilation-status-container"
             class="compilation-status-container"
+            aria-live="polite"
+            aria-atomic="true"
           ></div>
           <div id="compilations-list" class="compilations-list">
             <!-- Compilations will be loaded here -->
@@ -396,10 +465,18 @@
       </div>
 
       <!-- Reminders Settings Modal -->
-      <div id="settings-modal" class="modal hidden">
+      <div
+        id="settings-modal"
+        class="modal hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="settings-modal-title"
+        tabindex="-1"
+      >
         <div class="modal-content settings-modal-content">
           <div class="modal-header">
-            <h3>Reminders</h3>
+            <h3 id="settings-modal-title">Reminders</h3>
             <button class="close-btn" id="close-settings-btn">✕</button>
           </div>
 
@@ -463,13 +540,20 @@
       </div>
     </div>
 
+    <div
+      id="toast-announcer"
+      class="sr-only"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+
     <script src="/js/config.js?v=14"></script>
     <script src="/js/platform.js?v=16"></script>
     <script src="/js/native-auth.js?v=16"></script>
     <script src="/js/api.js?v=14"></script>
-    <script src="/js/recorder.js?v=16"></script>
+    <script src="/js/recorder.js?v=17"></script>
     <script src="/js/native-recorder.js?v=24"></script>
     <script src="/js/notifications.js?v=15"></script>
-    <script src="/js/app.js?v=23"></script>
+    <script src="/js/app.js?v=24"></script>
   </body>
 </html>

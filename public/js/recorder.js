@@ -465,8 +465,18 @@ function showToast(message, type = "success") {
 
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
+  toast.setAttribute("role", type === "error" ? "alert" : "status");
+  toast.setAttribute("aria-live", type === "error" ? "assertive" : "polite");
   toast.textContent = message;
   document.body.appendChild(toast);
+
+  const announcer = document.getElementById("toast-announcer");
+  if (announcer) {
+    announcer.textContent = "";
+    setTimeout(() => {
+      announcer.textContent = message;
+    }, 10);
+  }
 
   setTimeout(() => {
     toast.remove();

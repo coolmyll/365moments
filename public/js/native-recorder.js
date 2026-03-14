@@ -28,6 +28,117 @@ class NativeRecorder {
     this.recordingIndicator = document.getElementById("recording-indicator");
   }
 
+  getNativeRecorderPlugin() {
+    return window.Capacitor?.Plugins?.OneSecondRecorder || null;
+  }
+
+  async ensureNativeRecordingPermissions() {
+    const plugin = this.getNativeRecorderPlugin();
+    if (!plugin) {
+      return true;
+    }
+
+    const perms = await plugin.checkPermissions();
+    if (perms.camera === "granted" && perms.microphone === "granted") {
+      return true;
+    }
+
+    const requested = await plugin.requestPermissions();
+    const granted =
+      requested.camera === "granted" && requested.microphone === "granted";
+
+    if (!granted) {
+      showToast("Camera and microphone permissions are required.", "error");
+    }
+
+    return granted;
+  }
+
+  validateNativeRecordingResult(result) {
+    if (!result || typeof result !== "object") {
+      throw new Error("Plugin returned an empty recording result");
+    }
+
+    if (typeof result.filePath !== "string" || !result.filePath.trim()) {
+      throw new Error("Plugin returned no filePath");
+    }
+
+    if (result.filePath.includes("..")) {
+      throw new Error("Plugin returned an unsafe file path");
+    }
+
+    if (
+      result.mimeType &&
+      typeof result.mimeType === "string" &&
+      result.mimeType !== "video/mp4"
+    ) {
+      throw new Error(`Unsupported native mime type: ${result.mimeType}`);
+    }
+
+    const durationMs = Number(result.durationMs);
+    if (!Number.isFinite(durationMs) || durationMs < 700 || durationMs > 5000) {
+      throw new Error("Plugin returned an invalid recording duration");
+    }
+
+    return {
+      filePath: result.filePath,
+      mimeType: "video/mp4",
+      durationMs,
+    };
+  }
+
+  async readNativeRecordingBlob(recordingResult) {
+    const Filesystem = window.Capacitor?.Plugins?.Filesystem;
+
+    if (Filesystem) {
+      try {
+        const fileData = await Filesystem.readFile({
+          path: recordingResult.filePath,
+        });
+
+        if (!fileData?.data || typeof fileData.data !== "string") {
+          throw new Error("Filesystem returned empty file data");
+        }
+
+        const byteString = atob(fileData.data);
+        const bytes = new Uint8Array(byteString.length);
+        for (let index = 0; index < byteString.length; index += 1) {
+          bytes[index] = byteString.charCodeAt(index);
+        }
+
+        return new Blob([bytes], { type: recordingResult.mimeType });
+      } catch (error) {
+        console.warn(
+          "Filesystem read failed for native recording, falling back to file fetch",
+          error,
+        );
+      }
+    }
+
+    const webPath = window.Capacitor?.convertFileSrc?.(
+      recordingResult.filePath,
+    );
+    if (!webPath) {
+      throw new Error("Unable to resolve native recording path");
+    }
+
+    const response = await fetch(webPath);
+    if (!response.ok) {
+      throw new Error(`Failed to read native recording: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    if (blob.size === 0) {
+      throw new Error("Native recording file was empty");
+    }
+
+    return blob.type
+      ? blob
+      : new Blob([await blob.arrayBuffer()], {
+          type: recordingResult.mimeType,
+        });
+  }
+
   // ---- Lifecycle ----
 
   async init() {
@@ -265,20 +376,10 @@ class NativeRecorder {
     this.setRecordingEnabled(false);
 
     // Ensure native camera + microphone permissions are granted before countdown.
-    const OneSecondRecorder = window.Capacitor?.Plugins?.OneSecondRecorder;
-    if (OneSecondRecorder) {
-      const perms = await OneSecondRecorder.checkPermissions();
-      if (perms.camera !== "granted" || perms.microphone !== "granted") {
-        const requested = await OneSecondRecorder.requestPermissions();
-        if (
-          requested.camera !== "granted" ||
-          requested.microphone !== "granted"
-        ) {
-          showToast("Camera and microphone permissions are required.", "error");
-          this.setRecordingEnabled(true);
-          return;
-        }
-      }
+    const OneSecondRecorder = this.getNativeRecorderPlugin();
+    if (!(await this.ensureNativeRecordingPermissions())) {
+      this.setRecordingEnabled(true);
+      return;
     }
 
     // Countdown
@@ -305,32 +406,8 @@ class NativeRecorder {
           useFrontCamera: this.currentFacingMode === "user",
         });
 
-        console.log("[NativeRecorder] Plugin returned:", result);
-
-        if (!result.filePath) throw new Error("Plugin returned no filePath");
-
-        // Read the recorded file through Capacitor Filesystem and convert to a Blob
-        const Filesystem = window.Capacitor?.Plugins?.Filesystem;
-        let blob;
-
-        if (Filesystem) {
-          const fileData = await Filesystem.readFile({
-            path: result.filePath,
-          });
-          // Convert base64 → Blob
-          const byteString = atob(fileData.data);
-          const ab = new ArrayBuffer(byteString.length);
-          const ia = new Uint8Array(ab);
-          for (let i = 0; i < byteString.length; i++) {
-            ia[i] = byteString.charCodeAt(i);
-          }
-          blob = new Blob([ab], { type: "video/mp4" });
-        } else {
-          // Fallback: convert the native file URI to a fetchable URL
-          const webPath = window.Capacitor.convertFileSrc(result.filePath);
-          const resp = await fetch(webPath);
-          blob = await resp.blob();
-        }
+        const recordingResult = this.validateNativeRecordingResult(result);
+        const blob = await this.readNativeRecordingBlob(recordingResult);
 
         await this.uploadRecording(blob);
       } else {
@@ -350,7 +427,14 @@ class NativeRecorder {
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");
       // Restart WebView preview (CameraX may have taken over the camera)
-      await this.startCamera();
+      try {
+        await this.startCamera();
+      } catch (error) {
+        console.error(
+          "Failed to restart preview after native recording:",
+          error,
+        );
+      }
     }
   }
 

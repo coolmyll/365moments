@@ -3,9 +3,20 @@ const express = require("express");
 const session = require("express-session");
 const FileStore = require("session-file-store")(session);
 const multer = require("multer");
+const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { google } = require("googleapis");
+const { CompilationJobStore } = require("./compilation-job-store");
+const {
+  getRequestLogContext,
+  logError,
+  logInfo,
+  logWarn,
+  requestContextMiddleware,
+  retryAsync,
+  serializeError,
+} = require("./backend-utils");
 
 const nativeAuthTokens = new Map();
 
@@ -25,30 +36,240 @@ if (process.env.REDIS_URL) {
   });
 
   redisClient.on("error", (err) =>
-    console.log("Redis Client Error:", err.message),
+    logWarn("redis.client.error", { message: err.message }),
   );
 
   // Connect synchronously before app starts
   redisClient
     .connect()
     .then(() => {
-      console.log("✅ Redis connected");
+      logInfo("redis.connected");
     })
     .catch((err) => {
-      console.error("Redis connection failed:", err.message);
+      logError("redis.connection_failed", { message: err.message });
     });
 
   redisStore = new RedisStore({ client: redisClient, prefix: "365m:" });
-  console.log("📦 Using Redis for session storage");
+  logInfo("session.store.selected", { store: "redis" });
 } else {
-  console.log("📁 Using file-based session storage");
+  logInfo("session.store.selected", { store: "file" });
 }
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const TEMP_DIR = path.join(__dirname, "temp");
+const NATIVE_AUTH_TOKEN_TTL_MS = 60 * 1000;
+const COMPILATION_JOB_TTL_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_COMPILATION_STALE_MS = 2 * 60 * 60 * 1000;
+const TEMP_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;
+const VALID_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TRIM_START_SECONDS = 24 * 60 * 60;
+const MAX_MUSIC_DATA_URL_LENGTH = 30 * 1024 * 1024;
+const TEMP_ENTRY_PATTERN = /^(?:input|output|thumb|image)-|^session-/;
+const VIDEO_UPLOAD_MIME_TYPES = new Map([
+  ["video/mp4", ".mp4"],
+  ["video/webm", ".webm"],
+  ["video/quicktime", ".mov"],
+]);
+const IMAGE_UPLOAD_MIME_TYPES = new Map([
+  ["image/jpeg", ".jpg"],
+  ["image/jpg", ".jpg"],
+  ["image/png", ".png"],
+]);
+const ALLOWED_AUDIO_DATA_URL_PATTERN = /^data:audio\/(?:mpeg|mp3);base64,/i;
 
 // Compilation job tracking
-const compilationJobs = new Map();
+const compilationJobs = new CompilationJobStore(
+  path.join(TEMP_DIR, "compilation-jobs.json"),
+);
+
+function ensureTempDir() {
+  if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+  }
+}
+
+function isValidDateString(value) {
+  if (typeof value !== "string" || !VALID_DATE_PATTERN.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+}
+
+function normalizeClipFileName(fileName) {
+  if (typeof fileName !== "string" || !fileName.trim()) {
+    return null;
+  }
+
+  const normalized = path.basename(fileName.trim());
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})(?:\.[A-Za-z0-9]+)?$/);
+  if (!match || !isValidDateString(match[1])) {
+    return null;
+  }
+
+  return `${match[1]}.mp4`;
+}
+
+function parseStartTime(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return { value: 0 };
+  }
+
+  const parsed = Number.parseFloat(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return { error: "startTime must be a finite number" };
+  }
+
+  if (parsed < 0 || parsed > MAX_TRIM_START_SECONDS) {
+    return {
+      error: `startTime must be between 0 and ${MAX_TRIM_START_SECONDS} seconds`,
+    };
+  }
+
+  return { value: parsed };
+}
+
+function validateCompileRequest(body = {}) {
+  const startDate = body.startDate ?? null;
+  const endDate = body.endDate ?? null;
+  const musicData = body.musicData ?? null;
+
+  if ((startDate && !endDate) || (!startDate && endDate)) {
+    return { error: "startDate and endDate must be provided together" };
+  }
+
+  if (startDate && !isValidDateString(startDate)) {
+    return { error: "startDate must be a valid YYYY-MM-DD date" };
+  }
+
+  if (endDate && !isValidDateString(endDate)) {
+    return { error: "endDate must be a valid YYYY-MM-DD date" };
+  }
+
+  if (startDate && endDate && startDate > endDate) {
+    return { error: "startDate must be before or equal to endDate" };
+  }
+
+  if (musicData !== null) {
+    if (typeof musicData !== "string" || !musicData.trim()) {
+      return { error: "musicData must be a non-empty base64 data URL" };
+    }
+
+    if (!ALLOWED_AUDIO_DATA_URL_PATTERN.test(musicData)) {
+      return { error: "musicData must be an MP3 data URL" };
+    }
+
+    if (musicData.length > MAX_MUSIC_DATA_URL_LENGTH) {
+      return { error: "musicData is too large" };
+    }
+  }
+
+  return {
+    startDate,
+    endDate,
+    musicData,
+  };
+}
+
+function getUploadExtension(mimeType, allowImages = false) {
+  if (VIDEO_UPLOAD_MIME_TYPES.has(mimeType)) {
+    return VIDEO_UPLOAD_MIME_TYPES.get(mimeType);
+  }
+
+  if (allowImages && IMAGE_UPLOAD_MIME_TYPES.has(mimeType)) {
+    return IMAGE_UPLOAD_MIME_TYPES.get(mimeType);
+  }
+
+  return null;
+}
+
+function getJobTimestamp(job, fieldName) {
+  const value = job?.[fieldName] ? Date.parse(job[fieldName]) : Number.NaN;
+  return Number.isNaN(value) ? null : value;
+}
+
+function isCompilationJobExpired(job, now = Date.now()) {
+  if (!job) return true;
+
+  const completedAt = getJobTimestamp(job, "completedAt");
+  if (completedAt) {
+    return completedAt <= now - COMPILATION_JOB_TTL_MS;
+  }
+
+  const startedAt = getJobTimestamp(job, "startedAt");
+  if (!startedAt) {
+    return true;
+  }
+
+  return startedAt <= now - ACTIVE_COMPILATION_STALE_MS;
+}
+
+function sweepExpiredNativeAuthTokens(now = Date.now()) {
+  for (const [token, entry] of nativeAuthTokens.entries()) {
+    if (!entry?.expiresAt || entry.expiresAt <= now) {
+      nativeAuthTokens.delete(token);
+    }
+  }
+}
+
+function sweepExpiredCompilationJobs(now = Date.now()) {
+  for (const [userId, job] of compilationJobs.entries()) {
+    if (isCompilationJobExpired(job, now)) {
+      compilationJobs.delete(userId);
+    }
+  }
+}
+
+function sweepStaleTempEntries(now = Date.now()) {
+  ensureTempDir();
+
+  for (const entry of fs.readdirSync(TEMP_DIR, { withFileTypes: true })) {
+    if (!TEMP_ENTRY_PATTERN.test(entry.name)) {
+      continue;
+    }
+
+    const entryPath = path.join(TEMP_DIR, entry.name);
+
+    try {
+      const stats = fs.statSync(entryPath);
+      if (now - stats.mtimeMs <= TEMP_FILE_MAX_AGE_MS) {
+        continue;
+      }
+
+      fs.rmSync(entryPath, { recursive: true, force: true });
+    } catch (error) {
+      logWarn("cleanup.temp_entry_remove_failed", {
+        entryName: entry.name,
+        error: serializeError(error),
+      });
+    }
+  }
+}
+
+function startCleanupTasks() {
+  sweepExpiredNativeAuthTokens();
+  sweepExpiredCompilationJobs();
+  sweepStaleTempEntries();
+
+  const interval = setInterval(() => {
+    const now = Date.now();
+    sweepExpiredNativeAuthTokens(now);
+    sweepExpiredCompilationJobs(now);
+    sweepStaleTempEntries(now);
+  }, CLEANUP_INTERVAL_MS);
+
+  if (typeof interval.unref === "function") {
+    interval.unref();
+  }
+}
+
+startCleanupTasks();
 
 // Multer setup for handling video uploads
 const storage = multer.memoryStorage();
@@ -97,6 +318,27 @@ app.use(
     },
   }),
 );
+
+app.use(requestContextMiddleware);
+
+function buildLogContext(req, extra = {}) {
+  return getRequestLogContext(req, extra);
+}
+
+function getDriveLogContext(req, operation, extra = {}) {
+  return buildLogContext(req, {
+    service: "google.drive",
+    operation,
+    ...extra,
+  });
+}
+
+function withDriveRetry(req, operation, work, extra = {}) {
+  return retryAsync(work, {
+    label: `google.drive.${operation}`,
+    context: getDriveLogContext(req, operation, extra),
+  });
+}
 
 function createOAuthClient(redirectUri) {
   return new google.auth.OAuth2(
@@ -193,17 +435,28 @@ app.get("/auth/callback", async (req, res) => {
 
     // Log session storage
     const storeType = redisStore ? "Redis" : "FileStore";
-    console.log(
-      `[AUTH] User ${user.email} logged in, session stored in ${storeType}`,
-    );
+    logInfo("auth.login.success", {
+      requestId: req.requestId,
+      userId: user.email,
+      store: storeType,
+      mode: state === "app" ? "app" : "web",
+    });
 
     req.session.save((err) => {
       if (err) {
-        console.error("Auth callback session save error:", err);
+        logError("auth.session_save_failed", {
+          requestId: req.requestId,
+          userId: user.email,
+          error: serializeError(err),
+        });
         return res.redirect("/?error=auth_failed");
       }
 
-      console.log(`[AUTH] Callback state=${state}, user=${user.email}`);
+      logInfo("auth.callback.completed", {
+        requestId: req.requestId,
+        userId: user.email,
+        state,
+      });
 
       if (state !== "app") {
         return res.redirect("/");
@@ -213,16 +466,22 @@ app.get("/auth/callback", async (req, res) => {
       nativeAuthTokens.set(token, {
         tokens,
         user: req.session.user,
-        expiresAt: Date.now() + 60 * 1000,
+        expiresAt: Date.now() + NATIVE_AUTH_TOKEN_TTL_MS,
       });
 
       const deepLink = `moments365://auth/callback?token=${encodeURIComponent(token)}`;
-      console.log(`[AUTH] Deep link: ${deepLink}`);
+      logInfo("auth.deep_link.created", {
+        requestId: req.requestId,
+        userId: user.email,
+      });
 
       res.redirect(deepLink);
     });
   } catch (error) {
-    console.error("Auth callback error:", error);
+    logError("auth.callback.failed", {
+      requestId: req.requestId,
+      error: serializeError(error),
+    });
     res.redirect("/?error=auth_failed");
   }
 });
@@ -249,6 +508,7 @@ function handleNativeTokenExchange(req, res) {
     return res.status(400).json({ error: "Missing token" });
   }
 
+  sweepExpiredNativeAuthTokens();
   const entry = nativeAuthTokens.get(token);
   if (!entry || Date.now() > entry.expiresAt) {
     nativeAuthTokens.delete(token);
@@ -262,11 +522,17 @@ function handleNativeTokenExchange(req, res) {
 
   req.session.save((err) => {
     if (err) {
-      console.error("[AUTH] Token exchange session error:", err);
+      logError("auth.token_exchange.session_failed", {
+        requestId: req.requestId,
+        error: serializeError(err),
+      });
       return res.status(500).json({ error: "Session creation failed" });
     }
 
-    console.log(`[AUTH] Token exchange successful for ${entry.user.email}`);
+    logInfo("auth.token_exchange.success", {
+      requestId: req.requestId,
+      userId: entry.user.email,
+    });
     res.json({ success: true, user: entry.user });
   });
 }
@@ -322,6 +588,7 @@ async function requireAuth(req, res, next) {
         console.warn(
           `[AUTH] Refresh token invalid for ${req.session.user?.email}, forcing logout`,
         );
+        logWarn("auth.refresh.invalid_grant", buildLogContext(req));
         req.session.destroy(() => {});
         return res.status(401).json({
           error: "Google session expired. Please log in again.",
@@ -329,7 +596,10 @@ async function requireAuth(req, res, next) {
         });
       }
 
-      console.error("Token refresh error:", err);
+      logError("auth.refresh.failed", {
+        ...buildLogContext(req),
+        error: serializeError(err),
+      });
       req.session.destroy(() => {});
       return res.status(401).json({
         error: "Token refresh failed. Please log in again.",
@@ -337,7 +607,10 @@ async function requireAuth(req, res, next) {
       });
     }
   } catch (err) {
-    console.error("Authentication middleware error:", err);
+    logError("auth.middleware.failed", {
+      ...buildLogContext(req),
+      error: serializeError(err),
+    });
     return res.status(500).json({ error: "Authentication failed" });
   }
 }
@@ -350,20 +623,18 @@ async function handlePermissionError(req, res, error) {
       error.message?.includes("insufficient authentication scopes"));
 
   if (isPermissionError) {
-    console.log(
-      `[AUTH] User ${req.session.user?.email} has insufficient Drive permissions - revoking token`,
-    );
+    logWarn("auth.drive_permission_missing", buildLogContext(req));
 
     // Try to revoke the token so Google forgets the incomplete permission grant
     if (req.session.tokens?.access_token) {
       try {
         await oauth2Client.revokeToken(req.session.tokens.access_token);
-        console.log("[AUTH] Token revoked successfully");
+        logInfo("auth.token_revoked", buildLogContext(req));
       } catch (revokeErr) {
-        console.log(
-          "[AUTH] Token revoke failed (may already be invalid):",
-          revokeErr.message,
-        );
+        logWarn("auth.token_revoke_failed", {
+          ...buildLogContext(req),
+          error: serializeError(revokeErr),
+        });
       }
     }
 
@@ -382,23 +653,37 @@ async function handlePermissionError(req, res, error) {
 // Get or create app folder
 async function getOrCreateFolder(drive) {
   // Search for existing folder
-  const searchResponse = await drive.files.list({
-    q: `name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: "files(id, name)",
-  });
+  const searchResponse = await retryAsync(
+    () =>
+      drive.files.list({
+        q: `name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        fields: "files(id, name)",
+      }),
+    {
+      label: "google.drive.folder.lookup",
+      context: { folderName: DRIVE_FOLDER_NAME },
+    },
+  );
 
   if (searchResponse.data.files.length > 0) {
     return searchResponse.data.files[0].id;
   }
 
   // Create new folder
-  const folderResponse = await drive.files.create({
-    requestBody: {
-      name: DRIVE_FOLDER_NAME,
-      mimeType: "application/vnd.google-apps.folder",
+  const folderResponse = await retryAsync(
+    () =>
+      drive.files.create({
+        requestBody: {
+          name: DRIVE_FOLDER_NAME,
+          mimeType: "application/vnd.google-apps.folder",
+        },
+        fields: "id",
+      }),
+    {
+      label: "google.drive.folder.create",
+      context: { folderName: DRIVE_FOLDER_NAME },
     },
-    fields: "id",
-  });
+  );
 
   return folderResponse.data.id;
 }
@@ -430,29 +715,35 @@ async function generateThumbnail(videoPath, thumbnailPath) {
       thumbnailPath,
     ];
 
-    console.log("Generating thumbnail:", thumbnailPath);
+    logInfo("thumbnail.generate.started", { thumbnailPath });
     const ffmpegProcess = spawn(ffmpegPath, args);
 
     ffmpegProcess.stderr.on("data", (data) => {
       // Log errors for debugging
       const output = data.toString();
       if (output.includes("Error") || output.includes("error")) {
-        console.log("Thumbnail FFmpeg:", output);
+        logWarn("thumbnail.generate.ffmpeg_message", {
+          thumbnailPath,
+          output: output.trim(),
+        });
       }
     });
 
     ffmpegProcess.on("close", (code) => {
       if (code === 0) {
-        console.log("Thumbnail generated successfully");
+        logInfo("thumbnail.generate.completed", { thumbnailPath });
         resolve(true);
       } else {
-        console.log("Thumbnail generation failed with code:", code);
+        logWarn("thumbnail.generate.failed", { thumbnailPath, code });
         resolve(false); // Don't reject, thumbnails are optional
       }
     });
 
     ffmpegProcess.on("error", (err) => {
-      console.log("Thumbnail generation error:", err.message);
+      logWarn("thumbnail.generate.process_error", {
+        thumbnailPath,
+        error: serializeError(err),
+      });
       resolve(false);
     });
   });
@@ -468,20 +759,33 @@ async function uploadThumbnail(drive, folderId, thumbnailPath, fileName) {
 
   try {
     const fileStream = fs.createReadStream(thumbnailPath);
-    const response = await drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [folderId],
+    const response = await retryAsync(
+      () => {
+        const retryStream = fs.createReadStream(thumbnailPath);
+        return drive.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [folderId],
+          },
+          media: {
+            mimeType: "image/jpeg",
+            body: retryStream,
+          },
+          fields: "id",
+        });
       },
-      media: {
-        mimeType: "image/jpeg",
-        body: fileStream,
+      {
+        label: "google.drive.thumbnail.create",
+        context: { folderId, fileName },
       },
-      fields: "id",
-    });
+    );
     return response.data.id;
   } catch (error) {
-    console.error("Failed to upload thumbnail:", error);
+    logError("drive.thumbnail_upload.failed", {
+      folderId,
+      fileName,
+      error: serializeError(error),
+    });
     return null;
   }
 }
@@ -496,13 +800,19 @@ app.get("/api/clips", requireAuth, async (req, res) => {
     let allFiles = [];
     let pageToken = null;
     do {
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and trashed=false`,
-        fields: "nextPageToken, files(id, name, createdTime, size)",
-        orderBy: "name",
-        pageSize: 1000,
-        pageToken: pageToken || undefined,
-      });
+      const response = await withDriveRetry(
+        req,
+        "clips.list",
+        () =>
+          drive.files.list({
+            q: `'${folderId}' in parents and trashed=false`,
+            fields: "nextPageToken, files(id, name, createdTime, size)",
+            orderBy: "name",
+            pageSize: 1000,
+            pageToken: pageToken || undefined,
+          }),
+        { folderId },
+      );
       allFiles = allFiles.concat(response.data.files);
       pageToken = response.data.nextPageToken;
     } while (pageToken);
@@ -542,7 +852,10 @@ app.get("/api/clips", requireAuth, async (req, res) => {
     const handled = await handlePermissionError(req, res, error);
     if (handled !== false) return;
 
-    console.error("Error fetching clips:", error);
+    logError("clips.fetch.failed", {
+      ...buildLogContext(req),
+      error: serializeError(error),
+    });
     res.status(500).json({ error: "Failed to fetch clips" });
   }
 });
@@ -552,16 +865,25 @@ app.get("/api/thumbnails/:id", requireAuth, async (req, res) => {
   try {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-    const response = await drive.files.get(
-      { fileId: req.params.id, alt: "media" },
-      { responseType: "stream" },
+    const response = await withDriveRetry(
+      req,
+      "thumbnails.get",
+      () =>
+        drive.files.get(
+          { fileId: req.params.id, alt: "media" },
+          { responseType: "stream" },
+        ),
+      { fileId: req.params.id },
     );
 
     res.setHeader("Content-Type", "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=86400"); // Cache for 1 day
     response.data.pipe(res);
   } catch (error) {
-    console.error("Error fetching thumbnail:", error);
+    logError("thumbnails.fetch.failed", {
+      ...buildLogContext(req, { fileId: req.params.id }),
+      error: serializeError(error),
+    });
     res.status(404).send("Thumbnail not found");
   }
 });
@@ -616,14 +938,33 @@ app.post(
   async (req, res) => {
     const userName = req.session.user?.name || "Unknown";
     const userEmail = req.session.user?.email || "Unknown";
-    console.log(`[UPLOAD] User: ${userName} (${userEmail}) uploading clip...`);
+    logInfo("clips.upload.started", {
+      ...buildLogContext(req),
+      userName,
+      userId: userEmail,
+    });
 
     if (!req.file) {
       return res.status(400).json({ error: "No video file provided" });
     }
 
+    const normalizedFileName = normalizeClipFileName(
+      req.body.fileName || `${new Date().toISOString().split("T")[0]}.webm`,
+    );
+    if (!normalizedFileName) {
+      return res.status(400).json({
+        error: "fileName must use a valid YYYY-MM-DD-based name",
+      });
+    }
+
+    const inputExt = getUploadExtension(req.file.mimetype);
+    if (!inputExt) {
+      return res.status(415).json({
+        error: "Unsupported upload type. Use MP4, WebM, or MOV video files.",
+      });
+    }
+
     const { spawn } = require("child_process");
-    const fs = require("fs");
 
     // Get ffmpeg path
     let ffmpegPath;
@@ -633,18 +974,13 @@ app.post(
       ffmpegPath = "ffmpeg";
     }
 
-    // Create temp directory
-    const tempDir = path.join(__dirname, "temp");
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
+    ensureTempDir();
 
     // Use unique ID to prevent conflicts between concurrent uploads
     const uniqueId = crypto.randomUUID();
     const isUploadMp4 = req.file.mimetype === "video/mp4";
-    const inputExt = isUploadMp4 ? ".mp4" : ".webm";
-    const inputPath = path.join(tempDir, `input-${uniqueId}${inputExt}`);
-    const outputPath = path.join(tempDir, `output-${uniqueId}.mp4`);
+    const inputPath = path.join(TEMP_DIR, `input-${uniqueId}${inputExt}`);
+    const outputPath = path.join(TEMP_DIR, `output-${uniqueId}.mp4`);
 
     try {
       // Write uploaded file to disk
@@ -656,7 +992,10 @@ app.post(
       const finalVideoPath = alreadyMp4 ? inputPath : outputPath;
 
       if (alreadyMp4) {
-        console.log("[UPLOAD] File is already H.264 MP4, skipping conversion");
+        logInfo("clips.upload.skipped_conversion", {
+          ...buildLogContext(req, { userId: userEmail, userName }),
+          inputPath,
+        });
       } else {
         // Convert to MP4 using FFmpeg
         await new Promise((resolve, reject) => {
@@ -679,11 +1018,17 @@ app.post(
             outputPath,
           ];
 
-          console.log("FFmpeg convert command:", ffmpegPath, args.join(" "));
+          logInfo("clips.upload.ffmpeg.started", {
+            ...buildLogContext(req, { userId: userEmail, userName }),
+            ffmpegPath,
+          });
           const ffmpegProcess = spawn(ffmpegPath, args);
 
           ffmpegProcess.stderr.on("data", (data) => {
-            console.log("FFmpeg:", data.toString());
+            logInfo("clips.upload.ffmpeg.output", {
+              ...buildLogContext(req, { userId: userEmail }),
+              output: data.toString().trim(),
+            });
           });
 
           ffmpegProcess.on("close", (code) => {
@@ -698,29 +1043,34 @@ app.post(
       const drive = google.drive({ version: "v3", auth: oauth2Client });
       const folderId = await getOrCreateFolder(drive);
 
-      // Use original filename but ensure .mp4 extension
-      const originalName =
-        req.body.fileName || `${new Date().toISOString().split("T")[0]}.webm`;
-      const fileName = originalName.replace(/\.\w+$/, ".mp4");
+      const fileName = normalizedFileName;
       const dateStr = fileName.split(".")[0];
 
       // Generate thumbnail
-      const thumbnailPath = path.join(tempDir, `thumb-${uniqueId}.jpg`);
+      const thumbnailPath = path.join(TEMP_DIR, `thumb-${uniqueId}.jpg`);
       await generateThumbnail(finalVideoPath, thumbnailPath);
 
       // Upload video
       const fileStream = fs.createReadStream(finalVideoPath);
-      const response = await drive.files.create({
-        requestBody: {
-          name: fileName,
-          parents: [folderId],
+      const response = await withDriveRetry(
+        req,
+        "clips.create",
+        () => {
+          const retryStream = fs.createReadStream(finalVideoPath);
+          return drive.files.create({
+            requestBody: {
+              name: fileName,
+              parents: [folderId],
+            },
+            media: {
+              mimeType: "video/mp4",
+              body: retryStream,
+            },
+            fields: "id, name, createdTime",
+          });
         },
-        media: {
-          mimeType: "video/mp4",
-          body: fileStream,
-        },
-        fields: "id, name, createdTime",
-      });
+        { folderId, fileName },
+      );
 
       // Upload thumbnail
       await uploadThumbnail(
@@ -749,7 +1099,10 @@ app.post(
       const handled = await handlePermissionError(req, res, error);
       if (handled !== false) return;
 
-      console.error("Error uploading clip:", error);
+      logError("clips.upload.failed", {
+        ...buildLogContext(req, { userName, userId: userEmail }),
+        error: serializeError(error),
+      });
       // Cleanup on error
       try {
         if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
@@ -767,14 +1120,26 @@ app.get("/api/clips/:id/video", requireAuth, async (req, res) => {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     // Get file metadata to determine content type
-    const metaResponse = await drive.files.get({
-      fileId: req.params.id,
-      fields: "name, mimeType",
-    });
+    const metaResponse = await withDriveRetry(
+      req,
+      "clips.meta.get",
+      () =>
+        drive.files.get({
+          fileId: req.params.id,
+          fields: "name, mimeType",
+        }),
+      { fileId: req.params.id },
+    );
 
-    const response = await drive.files.get(
-      { fileId: req.params.id, alt: "media" },
-      { responseType: "stream" },
+    const response = await withDriveRetry(
+      req,
+      "clips.video.get",
+      () =>
+        drive.files.get(
+          { fileId: req.params.id, alt: "media" },
+          { responseType: "stream" },
+        ),
+      { fileId: req.params.id },
     );
 
     // Set content type based on file extension or mimeType
@@ -784,7 +1149,10 @@ app.get("/api/clips/:id/video", requireAuth, async (req, res) => {
     res.setHeader("Content-Type", contentType);
     response.data.pipe(res);
   } catch (error) {
-    console.error("Error fetching video:", error);
+    logError("clips.video_fetch.failed", {
+      ...buildLogContext(req, { fileId: req.params.id }),
+      error: serializeError(error),
+    });
     res.status(500).json({ error: "Failed to fetch video" });
   }
 });
@@ -793,25 +1161,46 @@ app.get("/api/clips/:id/video", requireAuth, async (req, res) => {
 app.delete("/api/clips/:id", requireAuth, async (req, res) => {
   const userName = req.session.user?.name || "Unknown";
   const userEmail = req.session.user?.email || "Unknown";
-  console.log(
-    `[DELETE] User: ${userName} (${userEmail}) deleting clip ${req.params.id}...`,
-  );
+  logInfo("clips.delete.started", {
+    ...buildLogContext(req, {
+      fileId: req.params.id,
+      userName,
+      userId: userEmail,
+    }),
+  });
 
   try {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     // Get file info to find associated thumbnail
-    const fileInfo = await drive.files.get({
-      fileId: req.params.id,
-      fields: "name, parents",
-    });
+    const fileInfo = await withDriveRetry(
+      req,
+      "clips.delete.meta",
+      () =>
+        drive.files.get({
+          fileId: req.params.id,
+          fields: "name, parents",
+        }),
+      { fileId: req.params.id },
+    );
 
     const fileName = fileInfo.data.name;
-    console.log(`[DELETE] User: ${userName} deleting file: ${fileName}`);
+    logInfo("clips.delete.target_resolved", {
+      ...buildLogContext(req, {
+        fileId: req.params.id,
+        fileName,
+        userId: userEmail,
+      }),
+    });
     const dateMatch = fileName.match(/^(\d{4}-\d{2}-\d{2})/);
 
     // Delete the video
-    await drive.files.delete({ fileId: req.params.id });
+    await withDriveRetry(
+      req,
+      "clips.delete.file",
+      () => drive.files.delete({ fileId: req.params.id }),
+      { fileId: req.params.id },
+    );
 
     // Try to delete associated thumbnail
     if (dateMatch && fileInfo.data.parents?.[0]) {
@@ -819,22 +1208,39 @@ app.delete("/api/clips/:id", requireAuth, async (req, res) => {
       const thumbName = `${dateMatch[1]}.thumb.jpg`;
 
       try {
-        const thumbSearch = await drive.files.list({
-          q: `'${folderId}' in parents and name='${thumbName}' and trashed=false`,
-          fields: "files(id)",
-        });
+        const thumbSearch = await withDriveRetry(
+          req,
+          "clips.delete.thumbnail_lookup",
+          () =>
+            drive.files.list({
+              q: `'${folderId}' in parents and name='${thumbName}' and trashed=false`,
+              fields: "files(id)",
+            }),
+          { folderId, thumbName },
+        );
 
         if (thumbSearch.data.files?.length > 0) {
-          await drive.files.delete({ fileId: thumbSearch.data.files[0].id });
+          await withDriveRetry(
+            req,
+            "clips.delete.thumbnail",
+            () => drive.files.delete({ fileId: thumbSearch.data.files[0].id }),
+            { fileId: thumbSearch.data.files[0].id },
+          );
         }
       } catch (thumbError) {
-        console.log("Thumbnail not found or already deleted");
+        logWarn("clips.delete.thumbnail_missing", {
+          ...buildLogContext(req, { fileId: req.params.id, thumbName }),
+          error: serializeError(thumbError),
+        });
       }
     }
 
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting clip:", error);
+    logError("clips.delete.failed", {
+      ...buildLogContext(req, { fileId: req.params.id, userId: userEmail }),
+      error: serializeError(error),
+    });
     res.status(500).json({ error: "Failed to delete clip" });
   }
 });
@@ -854,16 +1260,23 @@ app.post(
       return res.status(400).json({ error: "No file provided" });
     }
 
+    const inputExt = getUploadExtension(req.file.mimetype, true);
+    if (!inputExt) {
+      return res.status(415).json({
+        error: "Unsupported file type. Use MP4, WebM, MOV, JPG, or PNG.",
+      });
+    }
+
     const isImage = req.file.mimetype.startsWith("image/");
-    console.log(
-      `[UPLOAD-TRIM] User: ${userName} (${userEmail}) uploading ${
-        isImage ? "image" : "video"
-      }...`,
-    );
+    logInfo("clips.trim_upload.started", {
+      ...buildLogContext(req, {
+        userName,
+        userId: userEmail,
+        mediaType: isImage ? "image" : "video",
+      }),
+    });
 
     const { spawn } = require("child_process");
-    const fs = require("fs");
-    const path = require("path");
 
     // Get ffmpeg path
     let ffmpegPath;
@@ -874,13 +1287,19 @@ app.post(
     }
 
     const targetDate = req.body.date || new Date().toISOString().split("T")[0];
-    const startTime = parseFloat(req.body.startTime) || 0;
-
-    // Create temp directory
-    const tempDir = path.join(__dirname, "temp");
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
+    if (!isValidDateString(targetDate)) {
+      return res
+        .status(400)
+        .json({ error: "date must be a valid YYYY-MM-DD date" });
     }
+
+    const parsedStartTime = parseStartTime(req.body.startTime);
+    if (parsedStartTime.error) {
+      return res.status(400).json({ error: parsedStartTime.error });
+    }
+    const startTime = parsedStartTime.value;
+
+    ensureTempDir();
 
     try {
       const drive = google.drive({ version: "v3", auth: oauth2Client });
@@ -891,8 +1310,7 @@ app.post(
 
       if (isImage) {
         // Handle image upload - store as-is for compilation later
-        const imageExt = req.file.mimetype.includes("png") ? ".png" : ".jpg";
-        const imagePath = path.join(tempDir, `image-${uniqueId}${imageExt}`);
+        const imagePath = path.join(TEMP_DIR, `image-${uniqueId}${inputExt}`);
 
         // Write uploaded image to disk
         fs.writeFileSync(imagePath, req.file.buffer);
@@ -901,20 +1319,28 @@ app.post(
         const fileName = `${targetDate}${imageExt}`;
         const fileStream = fs.createReadStream(imagePath);
 
-        const response = await drive.files.create({
-          requestBody: {
-            name: fileName,
-            parents: [folderId],
+        const response = await withDriveRetry(
+          req,
+          "clips.trim_upload.image_create",
+          () => {
+            const retryStream = fs.createReadStream(imagePath);
+            return drive.files.create({
+              requestBody: {
+                name: fileName,
+                parents: [folderId],
+              },
+              media: {
+                mimeType: req.file.mimetype,
+                body: retryStream,
+              },
+              fields: "id, name, createdTime",
+            });
           },
-          media: {
-            mimeType: req.file.mimetype,
-            body: fileStream,
-          },
-          fields: "id, name, createdTime",
-        });
+          { folderId, fileName },
+        );
 
         // Generate thumbnail from image (resize it)
-        const thumbnailPath = path.join(tempDir, `thumb-${uniqueId}.jpg`);
+        const thumbnailPath = path.join(TEMP_DIR, `thumb-${uniqueId}.jpg`);
         await new Promise((resolve, reject) => {
           const args = [
             "-i",
@@ -956,9 +1382,8 @@ app.post(
         });
       } else {
         // Handle video upload - trim to 1 second
-        const inputExt = req.file.mimetype.includes("mp4") ? ".mp4" : ".webm";
-        const inputPath = path.join(tempDir, `input-${uniqueId}${inputExt}`);
-        const outputPath = path.join(tempDir, `output-${uniqueId}.mp4`);
+        const inputPath = path.join(TEMP_DIR, `input-${uniqueId}${inputExt}`);
+        const outputPath = path.join(TEMP_DIR, `output-${uniqueId}.mp4`);
 
         // Write uploaded file to disk
         fs.writeFileSync(inputPath, req.file.buffer);
@@ -992,7 +1417,14 @@ app.post(
             outputPath,
           ];
 
-          console.log("FFmpeg trim command:", ffmpegPath, args.join(" "));
+          logInfo("clips.trim_upload.ffmpeg.started", {
+            ...buildLogContext(req, {
+              userId: userEmail,
+              userName,
+              targetDate,
+            }),
+            ffmpegPath,
+          });
 
           const ffmpegProcess = spawn(ffmpegPath, args);
 
@@ -1003,7 +1435,10 @@ app.post(
           }, 120000);
 
           ffmpegProcess.stderr.on("data", (data) => {
-            console.log("FFmpeg:", data.toString());
+            logInfo("clips.trim_upload.ffmpeg.output", {
+              ...buildLogContext(req, { userId: userEmail, targetDate }),
+              output: data.toString().trim(),
+            });
           });
 
           ffmpegProcess.on("close", (code) => {
@@ -1025,20 +1460,28 @@ app.post(
         const fileName = `${targetDate}.mp4`;
         const fileStream = fs.createReadStream(outputPath);
 
-        const response = await drive.files.create({
-          requestBody: {
-            name: fileName,
-            parents: [folderId],
+        const response = await withDriveRetry(
+          req,
+          "clips.trim_upload.video_create",
+          () => {
+            const retryStream = fs.createReadStream(outputPath);
+            return drive.files.create({
+              requestBody: {
+                name: fileName,
+                parents: [folderId],
+              },
+              media: {
+                mimeType: "video/mp4",
+                body: retryStream,
+              },
+              fields: "id, name, createdTime",
+            });
           },
-          media: {
-            mimeType: "video/mp4",
-            body: fileStream,
-          },
-          fields: "id, name, createdTime",
-        });
+          { folderId, fileName },
+        );
 
         // Generate and upload thumbnail
-        const thumbnailPath = path.join(tempDir, `thumb-${uniqueId}.jpg`);
+        const thumbnailPath = path.join(TEMP_DIR, `thumb-${uniqueId}.jpg`);
         await generateThumbnail(outputPath, thumbnailPath);
         await uploadThumbnail(
           drive,
@@ -1063,7 +1506,10 @@ app.post(
         });
       }
     } catch (error) {
-      console.error("Error processing upload:", error);
+      logError("clips.trim_upload.failed", {
+        ...buildLogContext(req, { userId: userEmail, userName }),
+        error: serializeError(error),
+      });
       res
         .status(500)
         .json({ error: "Failed to process file: " + error.message });
@@ -1085,13 +1531,19 @@ app.get("/api/compilations", requireAuth, async (req, res) => {
     let pageToken;
 
     do {
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and trashed=false and name contains '365moments' and mimeType contains 'video/'`,
-        fields: "nextPageToken, files(id, name, createdTime, size)",
-        orderBy: "createdTime desc",
-        pageSize: 1000,
-        pageToken,
-      });
+      const response = await withDriveRetry(
+        req,
+        "compilations.list",
+        () =>
+          drive.files.list({
+            q: `'${folderId}' in parents and trashed=false and name contains '365moments' and mimeType contains 'video/'`,
+            fields: "nextPageToken, files(id, name, createdTime, size)",
+            orderBy: "createdTime desc",
+            pageSize: 1000,
+            pageToken,
+          }),
+        { folderId },
+      );
 
       files.push(...(response.data.files || []));
       pageToken = response.data.nextPageToken || null;
@@ -1112,7 +1564,10 @@ app.get("/api/compilations", requireAuth, async (req, res) => {
 
     res.json({ compilations });
   } catch (error) {
-    console.error("Error fetching compilations:", error);
+    logError("compilations.fetch.failed", {
+      ...buildLogContext(req),
+      error: serializeError(error),
+    });
     res.status(500).json({ error: "Failed to fetch compilations" });
   }
 });
@@ -1123,10 +1578,16 @@ app.get("/api/compilations/:id", requireAuth, async (req, res) => {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     // Get file metadata
-    const fileInfo = await drive.files.get({
-      fileId: req.params.id,
-      fields: "name, mimeType, size",
-    });
+    const fileInfo = await withDriveRetry(
+      req,
+      "compilations.meta.get",
+      () =>
+        drive.files.get({
+          fileId: req.params.id,
+          fields: "name, mimeType, size",
+        }),
+      { fileId: req.params.id },
+    );
 
     res.setHeader("Content-Type", fileInfo.data.mimeType || "video/mp4");
     res.setHeader(
@@ -1137,14 +1598,23 @@ app.get("/api/compilations/:id", requireAuth, async (req, res) => {
       res.setHeader("Content-Length", fileInfo.data.size);
     }
 
-    const response = await drive.files.get(
-      { fileId: req.params.id, alt: "media" },
-      { responseType: "stream" },
+    const response = await withDriveRetry(
+      req,
+      "compilations.stream",
+      () =>
+        drive.files.get(
+          { fileId: req.params.id, alt: "media" },
+          { responseType: "stream" },
+        ),
+      { fileId: req.params.id },
     );
 
     response.data.pipe(res);
   } catch (error) {
-    console.error("Error streaming compilation:", error);
+    logError("compilations.stream.failed", {
+      ...buildLogContext(req, { fileId: req.params.id }),
+      error: serializeError(error),
+    });
     res.status(500).json({ error: "Failed to stream compilation" });
   }
 });
@@ -1153,19 +1623,31 @@ app.get("/api/compilations/:id", requireAuth, async (req, res) => {
 app.delete("/api/compilations/:id", requireAuth, async (req, res) => {
   const userName = req.session.user?.name || "Unknown";
   const userEmail = req.session.user?.email || "Unknown";
-  console.log(
-    `[DELETE-COMPILATION] User: ${userName} (${userEmail}) deleting compilation ${req.params.id}...`,
-  );
+  logInfo("compilations.delete.started", {
+    ...buildLogContext(req, {
+      fileId: req.params.id,
+      userName,
+      userId: userEmail,
+    }),
+  });
 
   try {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
-    await drive.files.delete({ fileId: req.params.id });
-    console.log(
-      `[DELETE-COMPILATION] User: ${userName} successfully deleted compilation`,
+    await withDriveRetry(
+      req,
+      "compilations.delete",
+      () => drive.files.delete({ fileId: req.params.id }),
+      { fileId: req.params.id },
     );
+    logInfo("compilations.delete.completed", {
+      ...buildLogContext(req, { fileId: req.params.id, userId: userEmail }),
+    });
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting compilation:", error);
+    logError("compilations.delete.failed", {
+      ...buildLogContext(req, { fileId: req.params.id, userId: userEmail }),
+      error: serializeError(error),
+    });
     res.status(500).json({ error: "Failed to delete compilation" });
   }
 });
@@ -1173,24 +1655,38 @@ app.delete("/api/compilations/:id", requireAuth, async (req, res) => {
 app.post("/api/compile", requireAuth, async (req, res) => {
   const userName = req.session.user?.name || "Unknown";
   const userEmail = req.session.user?.email || "Unknown";
-  console.log(
-    `[COMPILE] User: ${userName} (${userEmail}) starting compilation...`,
-  );
+  logInfo("compile.started", {
+    ...buildLogContext(req, { userName, userId: userEmail }),
+  });
 
   try {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
     const folderId = await getOrCreateFolder(drive);
-    const { startDate, endDate, musicData } = req.body; // musicData is base64 encoded MP3
+    const compileRequest = validateCompileRequest(req.body);
+    if (compileRequest.error) {
+      return res.status(400).json({
+        success: false,
+        message: compileRequest.error,
+        status: "invalid_request",
+      });
+    }
+
+    const { startDate, endDate, musicData } = compileRequest; // musicData is base64 encoded MP3
     const userId = req.session.user?.email || req.session.id; // Use email or session ID for unique job tracking
 
     // Check if already compiling
     const existingJob = compilationJobs.get(userId);
-    if (existingJob && existingJob.status === "compiling") {
+    if (existingJob && isCompilationJobExpired(existingJob)) {
+      compilationJobs.delete(userId);
+    }
+
+    const activeJob = compilationJobs.get(userId);
+    if (activeJob && activeJob.status === "compiling") {
       return res.json({
         success: false,
         message: "A compilation is already in progress",
         status: "already_compiling",
-        jobId: existingJob.id,
+        jobId: activeJob.id,
       });
     }
 
@@ -1242,40 +1738,87 @@ app.post("/api/compile", requireAuth, async (req, res) => {
 
     // Run compilation in background
     const scopedOauthClient = cloneOAuthClientWithTokens(req.session.tokens);
-    const compiler = new VideoCompiler(scopedOauthClient);
+    const compiler = new VideoCompiler(scopedOauthClient, {
+      requestId: req.requestId,
+      userId: userEmail,
+      jobId,
+    });
 
     // Log music data status
     if (musicData) {
-      console.log(`[COMPILE] Music data received: ${musicData.length} bytes`);
+      logInfo("compile.music.received", {
+        ...buildLogContext(req, {
+          jobId,
+          bytes: musicData.length,
+          userId: userEmail,
+        }),
+      });
     } else {
-      console.log("[COMPILE] No music data provided");
+      logInfo("compile.music.absent", {
+        ...buildLogContext(req, { jobId, userId: userEmail }),
+      });
     }
 
     try {
-      job.progress = "Fetching clips...";
+      compilationJobs.update(userId, (currentJob) => {
+        if (!currentJob) return currentJob;
+        return {
+          ...currentJob,
+          progress: "Fetching clips...",
+        };
+      });
+
       const result = await compiler.compile(
         folderId,
         startDate,
         endDate,
         (progress) => {
-          job.progress = progress;
+          compilationJobs.update(userId, (currentJob) => {
+            if (!currentJob) return currentJob;
+            if (currentJob.progress === progress) {
+              return currentJob;
+            }
+
+            return {
+              ...currentJob,
+              progress,
+            };
+          });
         },
         musicData, // Pass music data (base64) to compiler
       );
 
-      job.status = "complete";
-      job.progress = "Done!";
-      job.result = result;
-      job.clipCount = result.clipCount;
-      job.completedAt = new Date().toISOString();
+      compilationJobs.update(userId, (currentJob) => {
+        if (!currentJob) return currentJob;
+        return {
+          ...currentJob,
+          status: "complete",
+          progress: "Done!",
+          result,
+          clipCount: result.clipCount,
+          completedAt: new Date().toISOString(),
+        };
+      });
     } catch (error) {
-      console.error("Compilation error:", error);
-      job.status = "error";
-      job.error = error.message;
-      job.progress = "Failed";
+      logError("compile.background.failed", {
+        ...buildLogContext(req, { jobId, userId: userEmail }),
+        error: serializeError(error),
+      });
+      compilationJobs.update(userId, (currentJob) => {
+        if (!currentJob) return currentJob;
+        return {
+          ...currentJob,
+          status: "error",
+          error: error.message,
+          progress: "Failed",
+        };
+      });
     }
   } catch (error) {
-    console.error("Compilation error:", error);
+    logError("compile.request.failed", {
+      ...buildLogContext(req, { userId: userEmail }),
+      error: serializeError(error),
+    });
     res.status(500).json({
       success: false,
       message: error.message || "Compilation failed",
@@ -1288,6 +1831,11 @@ app.post("/api/compile", requireAuth, async (req, res) => {
 app.get("/api/compile/status", requireAuth, (req, res) => {
   const userId = req.session.user?.email || req.session.id;
   const job = compilationJobs.get(userId);
+
+  if (job && isCompilationJobExpired(job)) {
+    compilationJobs.delete(userId);
+    return res.json({ status: "idle", message: "No compilation in progress" });
+  }
 
   if (!job) {
     return res.json({ status: "idle", message: "No compilation in progress" });
@@ -1321,9 +1869,26 @@ app.get("/{*splat}", (req, res) => {
 
 // ============ START SERVER ============
 
-app.listen(PORT, () => {
-  console.log(`🎬 365 Moments server running at http://localhost:${PORT}`);
-  console.log(
-    `📁 Videos will be saved to Google Drive folder: ${DRIVE_FOLDER_NAME}`,
-  );
-});
+function startServer(port = PORT) {
+  return app.listen(port, () => {
+    logInfo("server.started", {
+      port,
+      driveFolderName: DRIVE_FOLDER_NAME,
+    });
+  });
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  compilationJobs,
+  getOrCreateFolder,
+  isValidDateString,
+  normalizeClipFileName,
+  parseStartTime,
+  startServer,
+  validateCompileRequest,
+};

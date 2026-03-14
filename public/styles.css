@@ -200,6 +200,20 @@ header {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.icon-btn:focus-visible,
+.control-btn:focus-visible,
+.record-btn:focus-visible,
+.close-btn:focus-visible,
+.google-btn:focus-visible,
+.go-to-gallery-btn:focus-visible,
+.primary-btn:focus-visible,
+.secondary-btn:focus-visible,
+.dropdown-item:focus-visible,
+.day-cell:focus-visible {
+  outline: 3px solid rgba(233, 69, 96, 0.9);
+  outline-offset: 3px;
+}
+
 /* Main Screen */
 #main-screen main {
   flex: 1;
@@ -631,10 +645,13 @@ header {
   padding: 1rem;
   overflow-y: auto;
   flex: 1;
+  overscroll-behavior: contain;
 }
 
 .month-section {
   margin-bottom: 2rem;
+  content-visibility: auto;
+  contain-intrinsic-size: 320px;
 }
 
 .month-section h3 {
@@ -654,10 +671,13 @@ header {
 .day-cell {
   aspect-ratio: 1;
   border-radius: 8px;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.8rem;
+  font: inherit;
+  padding: 0;
   cursor: pointer;
   transition: transform 0.2s;
 }
@@ -688,6 +708,7 @@ header {
   height: 100%;
   object-fit: cover;
   border-radius: 6px;
+  pointer-events: none;
 }
 
 .day-cell.has-video .day-number {
@@ -810,6 +831,18 @@ header {
 /* Utilities */
 .hidden {
   display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Responsive */

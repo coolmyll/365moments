@@ -4,6 +4,12 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const {
+  logError,
+  logInfo,
+  retryAsync,
+  serializeError,
+} = require("./backend-utils");
 
 // Use ffmpeg-static for the binary path
 let ffmpegPath;
@@ -21,15 +27,39 @@ if (!fs.existsSync(TEMP_DIR)) {
 }
 
 class VideoCompiler {
-  constructor(oauth2Client) {
+  constructor(oauth2Client, logContext = {}) {
     this.oauth2Client = oauth2Client;
     this.drive = google.drive({ version: "v3", auth: oauth2Client });
+    this.logContext = logContext;
     // Minimum clips required for compilation (2 for dev, higher for prod)
     const isProd = process.env.NODE_ENV === "production";
     this.minClips = isProd ? 7 : 2;
-    console.log(
-      `VideoCompiler: NODE_ENV=${process.env.NODE_ENV}, minClips=${this.minClips}`,
-    );
+    this.info("compiler.initialized", {
+      nodeEnv: process.env.NODE_ENV,
+      minClips: this.minClips,
+    });
+  }
+
+  info(event, meta = {}) {
+    logInfo(event, { ...this.logContext, ...meta });
+  }
+
+  error(event, error, meta = {}) {
+    logError(event, {
+      ...this.logContext,
+      ...meta,
+      error: serializeError(error),
+    });
+  }
+
+  retry(label, operation, context = {}) {
+    return retryAsync(operation, {
+      label,
+      context: {
+        ...this.logContext,
+        ...context,
+      },
+    });
   }
 
   async compile(
@@ -41,9 +71,10 @@ class VideoCompiler {
   ) {
     const sessionDir = path.join(TEMP_DIR, `session-${crypto.randomUUID()}`);
     fs.mkdirSync(sessionDir, { recursive: true });
+    this.info("compiler.session.created", { sessionDir });
 
     const progress = (msg) => {
-      console.log(msg);
+      this.info("compiler.progress", { message: msg });
       if (onProgress) onProgress(msg);
     };
 
@@ -144,14 +175,19 @@ class VideoCompiler {
     let pageToken;
 
     do {
-      const response = await this.drive.files.list({
-        q: `'${folderId}' in parents and trashed=false and (mimeType contains 'video/' or mimeType contains 'image/')`,
-        fields:
-          "nextPageToken, files(id, name, mimeType, createdTime, modifiedTime)",
-        orderBy: "name", // Sort by date (filename is YYYY-MM-DD)
-        pageSize: 1000,
-        pageToken,
-      });
+      const response = await this.retry(
+        "google.drive.compiler.fetch_clips",
+        () =>
+          this.drive.files.list({
+            q: `'${folderId}' in parents and trashed=false and (mimeType contains 'video/' or mimeType contains 'image/')`,
+            fields:
+              "nextPageToken, files(id, name, mimeType, createdTime, modifiedTime)",
+            orderBy: "name", // Sort by date (filename is YYYY-MM-DD)
+            pageSize: 1000,
+            pageToken,
+          }),
+        { folderId },
+      );
 
       files.push(...(response.data.files || []));
       pageToken = response.data.nextPageToken || null;
@@ -184,9 +220,10 @@ class VideoCompiler {
       );
 
       if (candidateTime >= existingTime) {
-        console.log(
-          `Duplicate clip found for ${dateKey}, keeping the most recent upload`,
-        );
+        this.info("compiler.clip.duplicate_resolved", {
+          dateKey,
+          clipId: file.id,
+        });
         uniqueByDate.set(dateKey, file);
       }
     });
@@ -207,12 +244,22 @@ class VideoCompiler {
       );
 
       const progressMsg = `Downloading ${i + 1}/${clips.length}...`;
-      console.log(progressMsg);
+      this.info("compiler.clip.download_started", {
+        clipId: clip.id,
+        clipName: clip.name,
+        index: i + 1,
+        total: clips.length,
+      });
       if (onProgress) onProgress(progressMsg);
 
-      const response = await this.drive.files.get(
-        { fileId: clip.id, alt: "media" },
-        { responseType: "stream" },
+      const response = await this.retry(
+        "google.drive.compiler.download_clip",
+        () =>
+          this.drive.files.get(
+            { fileId: clip.id, alt: "media" },
+            { responseType: "stream" },
+          ),
+        { clipId: clip.id, clipName: clip.name },
       );
 
       await new Promise((resolve, reject) => {
@@ -233,9 +280,11 @@ class VideoCompiler {
         // Remove original image file
         fs.unlinkSync(downloadPath);
         localFiles.push(videoPath);
-        console.log(
-          `[COMPILE] Clip ${i + 1}: ${clip.name} (image -> 1s video)`,
-        );
+        this.info("compiler.clip.image_converted", {
+          clipId: clip.id,
+          clipName: clip.name,
+          index: i + 1,
+        });
       } else {
         // Normalize video to exactly 1 second to ensure consistent compilation
         const normalizedPath = downloadPath.replace(
@@ -248,9 +297,11 @@ class VideoCompiler {
         // Remove original and use normalized
         fs.unlinkSync(downloadPath);
         localFiles.push(normalizedPath);
-        console.log(
-          `[COMPILE] Clip ${i + 1}: ${clip.name} (video -> 1s normalized)`,
-        );
+        this.info("compiler.clip.video_normalized", {
+          clipId: clip.id,
+          clipName: clip.name,
+          index: i + 1,
+        });
       }
     }
 
@@ -291,23 +342,23 @@ class VideoCompiler {
         outputPath,
       ];
 
-      console.log("Normalizing video to 1s:", inputPath);
+      this.info("compiler.normalize.started", { inputPath, outputPath });
       const ffmpegProcess = spawn(ffmpegPath, args);
 
       ffmpegProcess.stderr.on("data", (data) => {
         // Log duration info for debugging
         const output = data.toString();
         if (output.includes("Duration:")) {
-          console.log(
-            "  Original duration:",
-            output.match(/Duration: [^,]+/)?.[0],
-          );
+          this.info("compiler.normalize.duration_detected", {
+            inputPath,
+            duration: output.match(/Duration: [^,]+/)?.[0],
+          });
         }
       });
 
       ffmpegProcess.on("close", (code) => {
         if (code === 0) {
-          console.log("Video normalized to 1 second");
+          this.info("compiler.normalize.completed", { inputPath, outputPath });
           resolve(outputPath);
         } else {
           reject(
@@ -344,7 +395,7 @@ class VideoCompiler {
         outputPath,
       ];
 
-      console.log("Converting image to video:", imagePath);
+      this.info("compiler.image_convert.started", { imagePath, outputPath });
       const ffmpegProcess = spawn(ffmpegPath, args);
 
       ffmpegProcess.stderr.on("data", (data) => {
@@ -353,7 +404,10 @@ class VideoCompiler {
 
       ffmpegProcess.on("close", (code) => {
         if (code === 0) {
-          console.log("Image converted to video");
+          this.info("compiler.image_convert.completed", {
+            imagePath,
+            outputPath,
+          });
           resolve(outputPath);
         } else {
           reject(new Error(`FFmpeg image conversion exited with code ${code}`));
@@ -372,10 +426,10 @@ class VideoCompiler {
       const base64Data = musicData.replace(/^data:audio\/[^;]+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
       fs.writeFileSync(musicPath, buffer);
-      console.log("Music saved:", musicPath, `(${buffer.length} bytes)`);
+      this.info("compiler.music.saved", { musicPath, bytes: buffer.length });
       return musicPath;
     } catch (error) {
-      console.error("Failed to save music:", error);
+      this.error("compiler.music.save_failed", error, { musicPath });
       return null; // Continue without music if save fails
     }
   }
@@ -423,7 +477,7 @@ class VideoCompiler {
           "-y",
           outputPath,
         ];
-        console.log("Compiling with background music");
+        this.info("compiler.concat.music_enabled", { musicPath });
       } else {
         // Without music - original audio only
         args = [
@@ -452,7 +506,7 @@ class VideoCompiler {
         ];
       }
 
-      console.log("FFmpeg command:", ffmpegPath, args.join(" "));
+      this.info("compiler.concat.started", { outputPath, ffmpegPath });
 
       const ffmpegProcess = spawn(ffmpegPath, args);
 
@@ -465,9 +519,8 @@ class VideoCompiler {
       });
 
       ffmpegProcess.on("close", (code) => {
-        console.log(""); // New line after progress dots
         if (code === 0) {
-          console.log("Compilation complete");
+          this.info("compiler.concat.completed", { outputPath });
           resolve(outputPath);
         } else {
           reject(new Error(`FFmpeg exited with code ${code}`));
@@ -475,27 +528,33 @@ class VideoCompiler {
       });
 
       ffmpegProcess.on("error", (err) => {
-        console.error("FFmpeg error:", err);
+        this.error("compiler.concat.process_error", err, { outputPath });
         reject(err);
       });
     });
   }
 
   async uploadToDrive(filePath, fileName, folderId) {
-    const fileStream = fs.createReadStream(filePath);
     const fileSize = fs.statSync(filePath).size;
 
-    const response = await this.drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [folderId],
+    const response = await this.retry(
+      "google.drive.compiler.upload_output",
+      () => {
+        const fileStream = fs.createReadStream(filePath);
+        return this.drive.files.create({
+          requestBody: {
+            name: fileName,
+            parents: [folderId],
+          },
+          media: {
+            mimeType: "video/mp4",
+            body: fileStream,
+          },
+          fields: "id, name, webViewLink",
+        });
       },
-      media: {
-        mimeType: "video/mp4",
-        body: fileStream,
-      },
-      fields: "id, name, webViewLink",
-    });
+      { folderId, fileName, fileSize },
+    );
 
     return response.data;
   }
@@ -504,10 +563,10 @@ class VideoCompiler {
     try {
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
-        console.log("Cleaned up temp files");
+        this.info("compiler.cleanup.completed", { sessionDir });
       }
     } catch (error) {
-      console.error("Cleanup error:", error);
+      this.error("compiler.cleanup.failed", error, { sessionDir });
     }
   }
 }
