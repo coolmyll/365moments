@@ -11,6 +11,7 @@ class App {
     this.uploadPreviewUrl = null;
     this.activeModalId = null;
     this.lastFocusedElement = null;
+    this.pendingConfirmation = null;
     this.screens = {
       loading: document.getElementById("loading-screen"),
       auth: document.getElementById("auth-screen"),
@@ -20,8 +21,6 @@ class App {
   }
 
   async init() {
-    console.log("Initializing 365 Moments...");
-
     // Show loading screen
     this.showScreen("loading");
 
@@ -54,10 +53,21 @@ class App {
     // Update date display
     this.updateDateDisplay();
 
-    console.log("App initialized");
   }
 
   setupEventListeners() {
+    const googleSignInBtn = document.getElementById("google-signin-btn");
+    if (googleSignInBtn) {
+      googleSignInBtn.addEventListener("click", async (event) => {
+        if (!Platform.isNative()) {
+          return;
+        }
+
+        event.preventDefault();
+        await NativeAuth.login();
+      });
+    }
+
     // Profile dropdown toggle
     const userInfoBtn = document.getElementById("user-info-btn");
     const profileDropdown = document.getElementById("profile-dropdown");
@@ -69,15 +79,6 @@ class App {
       profileDropdown.classList.toggle("hidden");
       chevron.classList.toggle("open", !isOpen);
       userInfoBtn.setAttribute("aria-expanded", String(!isOpen));
-    });
-
-    userInfoBtn.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" && e.key !== " ") {
-        return;
-      }
-
-      e.preventDefault();
-      userInfoBtn.click();
     });
 
     // Close dropdown when clicking outside
@@ -112,6 +113,18 @@ class App {
       .getElementById("close-settings-btn")
       .addEventListener("click", () => {
         this.closeSettings();
+      });
+
+    document
+      .getElementById("close-compile-modal")
+      .addEventListener("click", () => {
+        this.closeCompileModal();
+      });
+
+    document
+      .getElementById("close-compilations-modal")
+      .addEventListener("click", () => {
+        this.closeCompilationsModal();
       });
 
     document
@@ -220,6 +233,47 @@ class App {
         this.showCompilationsModal();
       });
 
+    document
+      .getElementById("compilations-list")
+      .addEventListener("click", (e) => {
+        const actionButton = e.target.closest("[data-compilation-action]");
+        if (!actionButton) {
+          return;
+        }
+
+        const { compilationAction, compilationId } = actionButton.dataset;
+        if (!compilationId) {
+          return;
+        }
+
+        if (compilationAction === "play") {
+          this.playCompilation(compilationId);
+          return;
+        }
+
+        if (compilationAction === "delete") {
+          this.deleteCompilation(compilationId);
+        }
+      });
+
+    document
+      .getElementById("confirm-cancel-btn")
+      .addEventListener("click", () => {
+        this.closeConfirmModal(false);
+      });
+
+    document
+      .getElementById("close-confirm-modal")
+      .addEventListener("click", () => {
+        this.closeConfirmModal(false);
+      });
+
+    document
+      .getElementById("confirm-action-btn")
+      .addEventListener("click", () => {
+        this.closeConfirmModal(true);
+      });
+
     // Modal backdrop click
     document
       .getElementById("video-preview-modal")
@@ -266,6 +320,24 @@ class App {
         }
       });
 
+    document.getElementById("compile-modal").addEventListener("click", (e) => {
+      if (e.target.id === "compile-modal") {
+        this.closeCompileModal();
+      }
+    });
+
+    document.getElementById("settings-modal").addEventListener("click", (e) => {
+      if (e.target.id === "settings-modal") {
+        this.closeSettings();
+      }
+    });
+
+    document.getElementById("confirm-modal").addEventListener("click", (e) => {
+      if (e.target.id === "confirm-modal") {
+        this.closeConfirmModal(false);
+      }
+    });
+
     // File input change
     document
       .getElementById("video-file-input")
@@ -280,8 +352,6 @@ class App {
   }
 
   async handleSignIn() {
-    console.log("User signed in:", this.user.name);
-
     // Update UI with user info
     document.getElementById("user-avatar").src = this.user.picture || "";
     document.getElementById("profile-name").textContent = this.user.name;
@@ -296,10 +366,8 @@ class App {
     // Initialize video recorder — use native recorder on Capacitor, web otherwise
     if (Platform.isNative()) {
       this.recorder = new NativeRecorder();
-      console.log("Using NativeRecorder (Capacitor)");
     } else {
       this.recorder = new VideoRecorder();
-      console.log("Using VideoRecorder (Web)");
     }
     await this.recorder.init();
     this.recorder.setClipsCache(this.clips);
@@ -335,7 +403,6 @@ class App {
       const data = await API.getClips();
       this.clips = data.clips || [];
       this.rebuildClipIndexes();
-      console.log(`Loaded ${this.clips.length} clips`);
 
       if (this.recorder) {
         this.recorder.setClipsCache(this.clips);
@@ -415,6 +482,71 @@ class App {
     this.lastFocusedElement = null;
   }
 
+  dismissActiveModal({ restoreFocus = true } = {}) {
+    if (!this.activeModalId) {
+      return;
+    }
+
+    switch (this.activeModalId) {
+      case "video-preview-modal":
+        this.closeVideoModal({ restoreFocus });
+        break;
+      case "day-options-modal":
+        this.closeDayOptionsModal({ restoreFocus });
+        break;
+      case "compile-modal":
+        this.closeCompileModal({ restoreFocus });
+        break;
+      case "compilations-modal":
+        this.closeCompilationsModal({ restoreFocus });
+        break;
+      case "upload-modal":
+        this.closeUploadModal({ restoreFocus });
+        break;
+      case "settings-modal":
+        this.closeSettings({ restoreFocus });
+        break;
+      case "confirm-modal":
+        this.closeConfirmModal(false, { restoreFocus });
+        break;
+      default:
+        this.closeModal(this.activeModalId, { restoreFocus });
+    }
+  }
+
+  requestConfirmation({
+    title,
+    message,
+    confirmLabel = "Confirm",
+    destructive = false,
+  }) {
+    return new Promise((resolve) => {
+      const confirmTitle = document.getElementById("confirm-modal-title");
+      const confirmMessage = document.getElementById("confirm-modal-message");
+      const confirmActionBtn = document.getElementById("confirm-action-btn");
+
+      this.pendingConfirmation = resolve;
+      confirmTitle.textContent = title;
+      confirmMessage.textContent = message;
+      confirmActionBtn.textContent = confirmLabel;
+      confirmActionBtn.classList.toggle("destructive", destructive);
+      this.openModal("confirm-modal", "#confirm-cancel-btn");
+    });
+  }
+
+  closeConfirmModal(confirmed = false, { restoreFocus = true } = {}) {
+    const confirmActionBtn = document.getElementById("confirm-action-btn");
+    const pendingConfirmation = this.pendingConfirmation;
+
+    this.pendingConfirmation = null;
+    confirmActionBtn.classList.remove("destructive");
+    this.closeModal("confirm-modal", { restoreFocus });
+
+    if (pendingConfirmation) {
+      pendingConfirmation(confirmed);
+    }
+  }
+
   handleGlobalKeydown(event) {
     if (event.key !== "Escape") {
       return;
@@ -423,28 +555,7 @@ class App {
     const dropdown = document.getElementById("profile-dropdown");
     if (this.activeModalId) {
       event.preventDefault();
-      switch (this.activeModalId) {
-        case "video-preview-modal":
-          this.closeVideoModal();
-          break;
-        case "day-options-modal":
-          this.closeDayOptionsModal();
-          break;
-        case "compile-modal":
-          this.closeCompileModal();
-          break;
-        case "compilations-modal":
-          this.closeCompilationsModal();
-          break;
-        case "upload-modal":
-          this.closeUploadModal();
-          break;
-        case "settings-modal":
-          this.closeSettings();
-          break;
-        default:
-          this.closeModal(this.activeModalId);
-      }
+      this.dismissActiveModal();
       return;
     }
 
@@ -478,9 +589,8 @@ class App {
 
     CapApp.addListener("backButton", async () => {
       // Close any open modals first
-      const openModal = document.querySelector(".modal:not(.hidden)");
-      if (openModal) {
-        openModal.classList.add("hidden");
+      if (this.activeModalId) {
+        this.dismissActiveModal({ restoreFocus: false });
         return;
       }
 
@@ -833,12 +943,20 @@ class App {
     this.openModal("day-options-modal", ".day-option-btn");
   }
 
-  closeDayOptionsModal() {
-    this.closeModal("day-options-modal");
+  closeDayOptionsModal(options) {
+    this.closeModal("day-options-modal", options);
   }
 
   async deleteClip(clip) {
-    if (!confirm("Are you sure you want to delete this video?")) {
+    const confirmed = await this.requestConfirmation({
+      title: "Delete this moment?",
+      message:
+        "This removes the selected video or image for that day. This action cannot be undone.",
+      confirmLabel: "Delete moment",
+      destructive: true,
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -884,15 +1002,14 @@ class App {
     });
   }
 
-  closeVideoModal() {
-    const modal = document.getElementById("video-preview-modal");
+  closeVideoModal(options) {
     const video = document.getElementById("preview-video");
     const image = document.getElementById("preview-image");
 
     video.pause();
     video.src = "";
     image.src = "";
-    this.closeModal("video-preview-modal");
+    this.closeModal("video-preview-modal", options);
   }
 
   // ============ COMPILE MODAL ============
@@ -936,8 +1053,8 @@ class App {
     this.openModal("compile-modal", "#compile-start-date");
   }
 
-  closeCompileModal() {
-    this.closeModal("compile-modal");
+  closeCompileModal(options) {
+    this.closeModal("compile-modal", options);
     // Reset music selection when closing modal
     this.clearSelectedMusic();
   }
@@ -1023,6 +1140,7 @@ class App {
   }
 
   async startCompile() {
+    const startCompileBtn = document.getElementById("start-compile-btn");
     const startDate = document.getElementById("compile-start-date").value;
     const endDate = document.getElementById("compile-end-date").value;
 
@@ -1036,6 +1154,9 @@ class App {
 
     // Save music data before closing modal (closeCompileModal clears it)
     const musicData = this.selectedMusicData;
+
+    startCompileBtn.disabled = true;
+    startCompileBtn.textContent = "Starting...";
 
     this.closeCompileModal();
 
@@ -1051,6 +1172,9 @@ class App {
       }
     } catch (error) {
       showToast("Failed to start compilation.", "error");
+    } finally {
+      startCompileBtn.disabled = false;
+      startCompileBtn.textContent = "Create video";
     }
   }
 
@@ -1139,8 +1263,7 @@ class App {
     const emptyState = document.getElementById("no-compilations");
 
     if (showLoading) {
-      list.innerHTML =
-        '<p style="text-align: center; color: var(--text-secondary);">Loading...</p>';
+      list.innerHTML = '<p class="list-feedback">Loading...</p>';
       emptyState.classList.add("hidden");
     }
 
@@ -1167,39 +1290,75 @@ class App {
       }
 
       emptyState.classList.add("hidden");
-      list.innerHTML = compilations
-        .map(
-          (comp) => `
-        <div class="compilation-item" data-id="${comp.id}">
-          <div class="compilation-info">
-            <div class="compilation-name">${comp.name}</div>
-            <div class="compilation-meta">
-              ${new Date(comp.createdAt).toLocaleDateString("en-GB")} • ${
-                comp.size
-              }
-            </div>
-          </div>
-          <div class="compilation-actions">
-            <button class="play-btn" onclick="app.playCompilation('${
-              comp.id
-            }')"><span class="material-symbols-rounded">play_circle</span> Play</button>
-            <button class="delete-btn" onclick="app.deleteCompilation('${
-              comp.id
-            }')"><span class="material-symbols-rounded">delete</span></button>
-          </div>
-        </div>
-      `,
-        )
-        .join("");
+      this.renderCompilationsList(compilations);
     } catch (error) {
       console.error("Failed to load compilations", error);
       list.innerHTML =
-        '<p style="text-align: center; color: #f87171;">Failed to load compilations</p>';
+        '<p class="list-feedback list-feedback-error">Failed to load compilations</p>';
     }
   }
 
-  closeCompilationsModal() {
-    this.closeModal("compilations-modal");
+  renderCompilationsList(compilations) {
+    const list = document.getElementById("compilations-list");
+    const fragment = document.createDocumentFragment();
+
+    list.innerHTML = "";
+
+    compilations.forEach((compilation) => {
+      const item = document.createElement("div");
+      item.className = "compilation-item";
+      item.dataset.id = compilation.id;
+
+      const info = document.createElement("div");
+      info.className = "compilation-info";
+
+      const name = document.createElement("div");
+      name.className = "compilation-name";
+      name.textContent = compilation.name;
+
+      const meta = document.createElement("div");
+      meta.className = "compilation-meta";
+      meta.textContent = `${new Date(compilation.createdAt).toLocaleDateString("en-GB")} • ${compilation.size}`;
+
+      info.append(name, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "compilation-actions";
+
+      const playButton = document.createElement("button");
+      playButton.type = "button";
+      playButton.className = "play-btn";
+      playButton.dataset.compilationAction = "play";
+      playButton.dataset.compilationId = compilation.id;
+      playButton.setAttribute(
+        "aria-label",
+        `Play compilation ${compilation.name}`,
+      );
+      playButton.innerHTML =
+        '<span class="material-symbols-rounded">play_circle</span><span>Play</span>';
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "delete-btn";
+      deleteButton.dataset.compilationAction = "delete";
+      deleteButton.dataset.compilationId = compilation.id;
+      deleteButton.setAttribute(
+        "aria-label",
+        `Delete compilation ${compilation.name}`,
+      );
+      deleteButton.innerHTML =
+        '<span class="material-symbols-rounded">delete</span><span class="sr-only">Delete</span>';
+
+      actions.append(playButton, deleteButton);
+      item.append(info, actions);
+      fragment.appendChild(item);
+    });
+
+    list.appendChild(fragment);
+  }
+
+  closeCompilationsModal(options) {
+    this.closeModal("compilations-modal", options);
   }
 
   playCompilation(id) {
@@ -1208,7 +1367,15 @@ class App {
   }
 
   async deleteCompilation(id) {
-    if (!confirm("Delete this compilation?")) return;
+    const confirmed = await this.requestConfirmation({
+      title: "Delete this compilation?",
+      message:
+        "This removes the exported video from your compilations list. This action cannot be undone.",
+      confirmLabel: "Delete compilation",
+      destructive: true,
+    });
+
+    if (!confirmed) return;
 
     try {
       await API.deleteCompilation(id);
@@ -1222,9 +1389,11 @@ class App {
   // ============ UPLOAD MODAL ============
 
   openUploadModal(presetDate = null, replaceMode = false) {
-    const modal = document.getElementById("upload-modal");
     const dateInput = document.getElementById("video-date");
     const dateDisplay = document.getElementById("video-date-display");
+    const uploadFileLabel = document.querySelector(
+      "#upload-modal .file-input-label",
+    );
 
     // Set date to preset or today
     const dateValue = presetDate || CONFIG.formatDateForFile();
@@ -1240,19 +1409,19 @@ class App {
     document.getElementById("video-file-input").value = "";
     document.getElementById("file-name").textContent = "Choose file...";
     document.getElementById("trim-start").value = "0";
-    document.getElementById("trim-start-group").style.display = "block";
+    document.getElementById("trim-start-group").hidden = false;
     document.getElementById("upload-preview").classList.add("hidden");
     document.getElementById("upload-preview-image").classList.add("hidden");
     document.getElementById("submit-upload").disabled = true;
-    document.querySelector(".file-input-label").classList.remove("has-file");
+    this.syncUploadSubmitButton();
+    uploadFileLabel?.classList.remove("has-file");
 
     this.selectedFile = null;
 
     this.openModal("upload-modal", "#video-file-input");
   }
 
-  closeUploadModal() {
-    const modal = document.getElementById("upload-modal");
+  closeUploadModal(options) {
     const videoPreview = document.getElementById("upload-preview");
     const imagePreview = document.getElementById("upload-preview-image");
 
@@ -1265,7 +1434,7 @@ class App {
       this.uploadPreviewUrl = null;
     }
 
-    this.closeModal("upload-modal");
+    this.closeModal("upload-modal", options);
   }
 
   handleFileSelect(file) {
@@ -1276,13 +1445,16 @@ class App {
 
     // Update UI
     document.getElementById("file-name").textContent = file.name;
-    document.querySelector(".file-input-label").classList.add("has-file");
+    document
+      .querySelector("#upload-modal .file-input-label")
+      ?.classList.add("has-file");
     document.getElementById("submit-upload").disabled = false;
+    this.syncUploadSubmitButton(file);
 
     // Show/hide trim controls based on file type
     const trimGroup = document.getElementById("trim-start-group");
     if (trimGroup) {
-      trimGroup.style.display = isImage ? "none" : "block";
+      trimGroup.hidden = isImage;
     }
 
     // Show appropriate preview
@@ -1311,7 +1483,7 @@ class App {
 
   async submitUpload() {
     if (!this.selectedFile) {
-      showToast("Please select a video file", "error");
+      showToast("Please select a video or image", "error");
       return;
     }
 
@@ -1344,6 +1516,7 @@ class App {
 
     const submitBtn = document.getElementById("submit-upload");
     submitBtn.disabled = true;
+    submitBtn.textContent = "Saving...";
 
     // Show uploading modal
     const uploadingModal = document.getElementById("uploading-modal");
@@ -1354,16 +1527,18 @@ class App {
       "uploading-detail-text",
     );
 
-    uploadingTitle.textContent = "Processing Video";
-    uploadingMessage.textContent = "Uploading and trimming...";
+    const isImage = this.selectedFile.type.startsWith("image/");
+    uploadingTitle.textContent = isImage
+      ? "Saving image moment"
+      : "Saving video moment";
+    uploadingMessage.textContent = isImage
+      ? "Uploading your image and preparing it for playback..."
+      : "Uploading your video and trimming it to one second...";
     uploadingDetailText.textContent = `File: ${this.selectedFile.name} (${(this.selectedFile.size / 1024 / 1024).toFixed(2)} MB)`;
     uploadingDetails.classList.remove("hidden");
     uploadingModal.classList.remove("hidden");
 
     try {
-      // Upload and trim
-      uploadingMessage.textContent =
-        "Uploading file and trimming to 1 second...";
       const result = await API.uploadAndTrim(
         this.selectedFile,
         date,
@@ -1371,7 +1546,7 @@ class App {
       );
 
       // Success
-      uploadingMessage.textContent = "Done! Saving...";
+      uploadingMessage.textContent = "Moment saved. Refreshing your library...";
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       showToast(`Clip saved for ${date}!`, "success");
@@ -1401,22 +1576,39 @@ class App {
         errorMsg = "Server error. Please try again later.";
       }
 
-      uploadingTitle.textContent = "Upload Failed";
+      uploadingTitle.textContent = "Could not save moment";
       uploadingMessage.textContent = errorMsg;
-      uploadingDetailText.textContent = "Click outside to dismiss.";
+      uploadingDetailText.textContent =
+        "Tap outside this dialog to dismiss and try again.";
 
       showToast(errorMsg, "error");
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Upload & Trim to 1 Second";
+      this.syncUploadSubmitButton(this.selectedFile);
 
       // Hide uploading modal after 3 seconds on success, keep on error
-      if (!uploadingTitle.textContent.includes("Failed")) {
+      if (uploadingTitle.textContent !== "Could not save moment") {
         setTimeout(() => {
           uploadingModal.classList.add("hidden");
         }, 1500);
       }
     }
+  }
+
+  syncUploadSubmitButton(file = null) {
+    const submitBtn = document.getElementById("submit-upload");
+    if (!submitBtn) {
+      return;
+    }
+
+    if (!file) {
+      submitBtn.textContent = "Save moment";
+      return;
+    }
+
+    submitBtn.textContent = file.type.startsWith("image/")
+      ? "Save image"
+      : "Save video";
   }
 
   // ---- Settings / Reminders ----
@@ -1442,8 +1634,8 @@ class App {
     this.openModal("settings-modal", "#reminder-enabled");
   }
 
-  closeSettings() {
-    this.closeModal("settings-modal");
+  closeSettings(options) {
+    this.closeModal("settings-modal", options);
   }
 
   async saveReminderSettings() {
@@ -1478,5 +1670,3 @@ document.addEventListener("DOMContentLoaded", () => {
   app = new App();
   app.init();
 });
-
-window.app = app;
