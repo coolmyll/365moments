@@ -14,7 +14,7 @@ class App {
     this.pendingConfirmation = null;
     this.modalCloseTimers = new Map();
     this.uploadingDelightInterval = null;
-    this.themePreference = "warm";
+    this.themePreference = "color";
     this.systemThemeMediaQuery = null;
     this.systemThemeListener = null;
     this.screens = {
@@ -60,7 +60,6 @@ class App {
 
     // Update date display
     this.updateDateDisplay();
-
   }
 
   updateLoadingSubtext() {
@@ -167,14 +166,16 @@ class App {
       this.handleGlobalKeydown(e);
     });
 
-    document.getElementById("theme-option-list")?.addEventListener("click", (e) => {
-      const themeButton = e.target.closest("[data-theme-option]");
-      if (!themeButton) {
-        return;
-      }
+    document
+      .getElementById("theme-option-list")
+      ?.addEventListener("click", (e) => {
+        const themeButton = e.target.closest("[data-theme-option]");
+        if (!themeButton) {
+          return;
+        }
 
-      this.setThemePreference(themeButton.dataset.themeOption);
-    });
+        this.setThemePreference(themeButton.dataset.themeOption);
+      });
 
     // Signout
     document
@@ -457,7 +458,9 @@ class App {
       return null;
     }
 
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "warm";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "color";
   }
 
   getSystemThemeDescription() {
@@ -470,9 +473,16 @@ class App {
   initializeThemePreference() {
     this.syncThemeOptionVisibility();
 
-    const savedTheme = localStorage.getItem("themePreference") || "warm";
-    const initialTheme =
-      savedTheme === "system" && !this.supportsSystemTheme() ? "warm" : savedTheme;
+    const savedTheme = localStorage.getItem("themePreference") || "color";
+    let initialTheme = savedTheme;
+
+    if (initialTheme === "warm") {
+      initialTheme = "color";
+    }
+
+    if (initialTheme === "system" && !this.supportsSystemTheme()) {
+      initialTheme = "color";
+    }
 
     if (savedTheme !== initialTheme) {
       localStorage.setItem("themePreference", initialTheme);
@@ -494,7 +504,9 @@ class App {
       return;
     }
 
-    this.systemThemeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    this.systemThemeMediaQuery = window.matchMedia(
+      "(prefers-color-scheme: dark)",
+    );
     this.systemThemeListener = () => {
       if (this.themePreference === "system") {
         this.applyThemePreference();
@@ -502,7 +514,10 @@ class App {
     };
 
     if (typeof this.systemThemeMediaQuery.addEventListener === "function") {
-      this.systemThemeMediaQuery.addEventListener("change", this.systemThemeListener);
+      this.systemThemeMediaQuery.addEventListener(
+        "change",
+        this.systemThemeListener,
+      );
       return;
     }
 
@@ -517,8 +532,13 @@ class App {
     }
 
     if (typeof this.systemThemeMediaQuery.removeEventListener === "function") {
-      this.systemThemeMediaQuery.removeEventListener("change", this.systemThemeListener);
-    } else if (typeof this.systemThemeMediaQuery.removeListener === "function") {
+      this.systemThemeMediaQuery.removeEventListener(
+        "change",
+        this.systemThemeListener,
+      );
+    } else if (
+      typeof this.systemThemeMediaQuery.removeListener === "function"
+    ) {
       this.systemThemeMediaQuery.removeListener(this.systemThemeListener);
     }
 
@@ -567,7 +587,7 @@ class App {
   }
 
   setThemePreference(themeName, { persist = true } = {}) {
-    const validThemes = new Set(["warm", "color", "dark"]);
+    const validThemes = new Set(["color", "dark"]);
     if (this.supportsSystemTheme()) {
       validThemes.add("system");
     }

@@ -252,14 +252,14 @@ class OneSecondRecorderPlugin : Plugin() {
             return currentRotation
         }
 
-        return rotateQuarterTurn(currentRotation)
+        return rotateCounterClockwiseQuarterTurn(currentRotation)
     }
 
-    private fun rotateQuarterTurn(rotation: Int): Int = when (rotation) {
-        Surface.ROTATION_0 -> Surface.ROTATION_90
-        Surface.ROTATION_90 -> Surface.ROTATION_180
-        Surface.ROTATION_180 -> Surface.ROTATION_270
-        Surface.ROTATION_270 -> Surface.ROTATION_0
+    private fun rotateCounterClockwiseQuarterTurn(rotation: Int): Int = when (rotation) {
+        Surface.ROTATION_0 -> Surface.ROTATION_270
+        Surface.ROTATION_90 -> Surface.ROTATION_0
+        Surface.ROTATION_180 -> Surface.ROTATION_90
+        Surface.ROTATION_270 -> Surface.ROTATION_180
         else -> Surface.ROTATION_0
     }
 
