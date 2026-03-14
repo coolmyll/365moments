@@ -225,8 +225,8 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = 1f
-        localPreviewView.rotationY = if (useFrontCamera) 180f else 0f
+        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
+        localPreviewView.rotationY = 0f
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -288,8 +288,8 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = 1f
-        localPreviewView.rotationY = if (useFrontCamera) 180f else 0f
+        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
+        localPreviewView.rotationY = 0f
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
