@@ -495,6 +495,9 @@ class NativeRecorder {
   async uploadRecording(blob) {
     const uploadingModal = document.getElementById("uploading-modal");
     uploadingModal.classList.remove("hidden");
+    if (typeof app !== "undefined" && app.startUploadingDelight) {
+      app.startUploadingDelight("video");
+    }
 
     try {
       const targetDate = this.getTargetDate();
@@ -503,6 +506,9 @@ class NativeRecorder {
 
       const result = await API.uploadClip(blob, fileName);
 
+      if (typeof app !== "undefined" && app.stopUploadingDelight) {
+        app.stopUploadingDelight("Your one-second keepsake is ready.");
+      }
       window.celebrateMomentSaved?.(".camera-container");
       showToast(
         `Moment saved for ${CONFIG.formatDateStringForDisplay(targetDate)}!`,
@@ -520,10 +526,16 @@ class NativeRecorder {
       this.updateRecordingState(true);
     } catch (error) {
       console.error("Upload failed:", error);
+      if (typeof app !== "undefined" && app.stopUploadingDelight) {
+        app.stopUploadingDelight("That one slipped away. Try again.");
+      }
       showToast("Failed to upload. Please try again.", "error");
       this.setRecordingEnabled(true);
     } finally {
       uploadingModal.classList.add("hidden");
+      if (typeof app !== "undefined" && app.stopUploadingDelight) {
+        app.stopUploadingDelight();
+      }
     }
   }
 

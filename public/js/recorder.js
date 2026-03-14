@@ -401,6 +401,9 @@ class VideoRecorder {
   async uploadRecording(blob) {
     const uploadingModal = document.getElementById("uploading-modal");
     uploadingModal.classList.remove("hidden");
+    if (typeof app !== "undefined" && app.startUploadingDelight) {
+      app.startUploadingDelight("video");
+    }
 
     try {
       const targetDate = this.getTargetDate();
@@ -409,6 +412,9 @@ class VideoRecorder {
       const result = await API.uploadClip(blob, fileName);
 
       const dateDisplay = CONFIG.formatDateStringForDisplay(targetDate);
+      if (typeof app !== "undefined" && app.stopUploadingDelight) {
+        app.stopUploadingDelight("Your one-second keepsake is ready.");
+      }
       celebrateMomentSaved(".camera-container");
       showToast(`Moment saved for ${dateDisplay}!`, "success");
 
@@ -432,11 +438,17 @@ class VideoRecorder {
       this.updateRecordingState(true);
     } catch (error) {
       console.error("Upload failed:", error);
+      if (typeof app !== "undefined" && app.stopUploadingDelight) {
+        app.stopUploadingDelight("That one slipped away. Try again.");
+      }
       showToast("Failed to upload. Please try again.", "error");
       // Re-enable button on error so user can try again
       this.setRecordingEnabled(true);
     } finally {
       uploadingModal.classList.add("hidden");
+      if (typeof app !== "undefined" && app.stopUploadingDelight) {
+        app.stopUploadingDelight();
+      }
     }
   }
 

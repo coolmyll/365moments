@@ -185,6 +185,13 @@ body {
   color: var(--text-secondary);
 }
 
+.loading-subtext {
+  margin-top: 0.55rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--surface-soft) 58%, var(--text-secondary) 42%);
+}
+
 .loading-spinner {
   width: 50px;
   height: 50px;
@@ -295,6 +302,8 @@ header {
   align-items: center;
   gap: 0.75rem;
   padding: 1rem;
+  position: relative;
+  z-index: 260;
   background: linear-gradient(
     180deg,
     rgba(41, 54, 47, 0.9) 0%,
@@ -399,7 +408,19 @@ header {
 }
 
 .date-display {
+  width: 100%;
+  align-self: stretch;
+  padding: 1rem 1.5rem 0.9rem;
+  border-radius: 24px;
+  background: linear-gradient(
+    180deg,
+    rgba(41, 54, 47, 0.9) 0%,
+    rgba(35, 46, 41, 0.8) 100%
+  );
+  border: 1px solid rgba(251, 243, 230, 0.06);
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .date-display h2 {
@@ -746,6 +767,14 @@ header {
   color: var(--text-secondary);
   font-size: 0.9rem;
   margin: 0;
+}
+
+.uploading-rotating-note {
+  min-height: 1.4em;
+  margin-top: 0.8rem !important;
+  font-size: 0.8rem !important;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--surface-soft) 52%, var(--text-secondary) 48%) !important;
 }
 
 .uploading-animation {
@@ -1828,6 +1857,35 @@ header {
   text-align: center;
   padding: 2rem;
   color: var(--text-secondary);
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+}
+
+.empty-state-icon {
+  font-size: 2rem;
+  color: color-mix(in srgb, var(--warning) 58%, var(--accent) 42%);
+  animation: emptyStateDrift 4.2s ease-in-out infinite;
+}
+
+.empty-state-title {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.empty-state-copy {
+  max-width: 28ch;
+  line-height: 1.5;
+}
+
+@keyframes emptyStateDrift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 .list-feedback {
   margin: 0;
@@ -2166,10 +2224,6 @@ header {
 
 /* ============ PROFILE DROPDOWN ============ */
 
-header {
-  position: relative;
-}
-
 .user-info {
   cursor: pointer;
   user-select: none;
@@ -2201,7 +2255,7 @@ header {
   border: 1px solid rgba(251, 243, 230, 0.1);
   border-radius: 16px;
   box-shadow: 0 20px 36px rgba(0, 0, 0, 0.24);
-  z-index: 220;
+  z-index: 420;
   overflow: hidden;
   animation: dropdownIn 220ms var(--ease-out-quart) both;
 }
@@ -2468,7 +2522,8 @@ header {
   .celebration-core::before,
   .celebration-ring::before,
   .celebration-spark::before,
-  .celebration-spark::after {
+  .celebration-spark::after,
+  .empty-state-icon {
     animation: none !important;
   }
 

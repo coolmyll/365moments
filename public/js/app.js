@@ -13,6 +13,7 @@ class App {
     this.lastFocusedElement = null;
     this.pendingConfirmation = null;
     this.modalCloseTimers = new Map();
+    this.uploadingDelightInterval = null;
     this.screens = {
       loading: document.getElementById("loading-screen"),
       auth: document.getElementById("auth-screen"),
@@ -24,6 +25,7 @@ class App {
   async init() {
     // Show loading screen
     this.showScreen("loading");
+    this.updateLoadingSubtext();
 
     // Initialise native auth deep-link listener (no-op on web)
     await NativeAuth.init();
@@ -54,6 +56,72 @@ class App {
     // Update date display
     this.updateDateDisplay();
 
+  }
+
+  updateLoadingSubtext() {
+    const loadingSubtext = document.getElementById("loading-subtext");
+    if (!loadingSubtext) {
+      return;
+    }
+
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      loadingSubtext.textContent = "Making room for a fresh start...";
+      return;
+    }
+
+    if (hour < 18) {
+      loadingSubtext.textContent = "Gathering today while it is still warm...";
+      return;
+    }
+
+    loadingSubtext.textContent = "Bringing the day back into focus...";
+  }
+
+  startUploadingDelight(kind = "video") {
+    const note = document.getElementById("uploading-rotating-note");
+    if (!note) {
+      return;
+    }
+
+    this.stopUploadingDelight();
+
+    const sharedMessages = [
+      "Finding the right place for this memory...",
+      "Tucking this moment into your timeline...",
+      "Keeping the details intact while we save it...",
+    ];
+    const kindSpecificMessages =
+      kind === "image"
+        ? [
+            "Framing this still moment for future you...",
+            "Giving this image its one-second spotlight...",
+          ]
+        : [
+            "Trimming this clip down to its strongest second...",
+            "Keeping the part you will want to replay later...",
+          ];
+
+    const messages = [...sharedMessages, ...kindSpecificMessages];
+    let index = 0;
+    note.textContent = messages[index];
+
+    this.uploadingDelightInterval = setInterval(() => {
+      index = (index + 1) % messages.length;
+      note.textContent = messages[index];
+    }, 1700);
+  }
+
+  stopUploadingDelight(finalMessage = "") {
+    if (this.uploadingDelightInterval) {
+      clearInterval(this.uploadingDelightInterval);
+      this.uploadingDelightInterval = null;
+    }
+
+    const note = document.getElementById("uploading-rotating-note");
+    if (note) {
+      note.textContent = finalMessage;
+    }
   }
 
   setupEventListeners() {
@@ -355,7 +423,6 @@ class App {
   async handleSignIn() {
     // Update UI with user info
     document.getElementById("user-avatar").src = this.user.picture || "";
-    document.getElementById("profile-name").textContent = this.user.name;
 
     // Load clips from Drive - this may show permission error screen
     const clipsLoaded = await this.loadClips();
@@ -1565,6 +1632,7 @@ class App {
     uploadingDetailText.textContent = `File: ${this.selectedFile.name} (${(this.selectedFile.size / 1024 / 1024).toFixed(2)} MB)`;
     uploadingDetails.classList.remove("hidden");
     uploadingModal.classList.remove("hidden");
+    this.startUploadingDelight(isImage ? "image" : "video");
 
     try {
       const result = await API.uploadAndTrim(
@@ -1575,6 +1643,7 @@ class App {
 
       // Success
       uploadingMessage.textContent = "Moment saved. Refreshing your library...";
+      this.stopUploadingDelight("A small future favorite is ready.");
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       window.celebrateMomentSaved?.("#uploading-modal .modal-content");
@@ -1609,6 +1678,7 @@ class App {
       uploadingMessage.textContent = errorMsg;
       uploadingDetailText.textContent =
         "Tap outside this dialog to dismiss and try again.";
+      this.stopUploadingDelight("Let’s try that one more time.");
 
       showToast(errorMsg, "error");
     } finally {
@@ -1619,7 +1689,10 @@ class App {
       if (uploadingTitle.textContent !== "Could not save moment") {
         setTimeout(() => {
           uploadingModal.classList.add("hidden");
+          this.stopUploadingDelight();
         }, 1500);
+      } else {
+        this.stopUploadingDelight("Let’s try that one more time.");
       }
     }
   }
