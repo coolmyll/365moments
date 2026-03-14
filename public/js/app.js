@@ -644,6 +644,13 @@ class App {
     // Show main screen
     this.showScreen("main");
 
+    if (this.recorder?.resumePreview) {
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+      await this.recorder.resumePreview();
+    }
+
     // Scroll to top after everything is loaded (mobile browsers preserve scroll position)
     setTimeout(() => window.scrollTo(0, 0), 100);
 

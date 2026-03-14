@@ -8,11 +8,13 @@ class NativeRecorder {
   constructor() {
     this.stream = null;
     this.previewSyncFrame = null;
+    this.previewRetryTimer = null;
     this.clipsCache = new Map();
     this.targetDate = null;
     this.currentFacingMode = "user";
     this.isRecording = false;
 
+    this.cameraContainer = document.querySelector(".camera-container");
     this.preview = document.getElementById("camera-preview");
     this.recordBtn = document.getElementById("record-btn");
     this.switchCameraBtn = document.getElementById("switch-camera-btn");
@@ -145,6 +147,8 @@ class NativeRecorder {
         this.orientationBtn.style.display = "none";
       }
 
+      this.cameraContainer?.classList.remove("landscape");
+
       this.preview.style.visibility = "hidden";
       this.preview.style.pointerEvents = "none";
 
@@ -226,13 +230,50 @@ class NativeRecorder {
     });
   }
 
+  queuePreviewRetry(facingMode = this.currentFacingMode) {
+    if (this.previewRetryTimer !== null) {
+      clearTimeout(this.previewRetryTimer);
+    }
+
+    this.previewRetryTimer = window.setTimeout(() => {
+      this.previewRetryTimer = null;
+      if (!this.isRecording && !this.isDayRecorded() && !document.hidden) {
+        void this.startCamera(facingMode);
+      }
+    }, 120);
+  }
+
+  async showNativeCountdown(text) {
+    const plugin = this.getNativeRecorderPlugin();
+    if (!plugin?.showCountdown) {
+      return;
+    }
+
+    await plugin.showCountdown({ text });
+  }
+
+  async hideNativeCountdown() {
+    const plugin = this.getNativeRecorderPlugin();
+    if (!plugin?.hideCountdown) {
+      return;
+    }
+
+    await plugin.hideCountdown();
+  }
+
   async startCamera(facingMode = this.currentFacingMode) {
     const plugin = this.getNativeRecorderPlugin();
     if (plugin) {
       const bounds = this.getPreviewBounds();
       if (!bounds) {
         this.showViewfinder();
+        this.queuePreviewRetry(facingMode);
         return;
+      }
+
+      if (this.previewRetryTimer !== null) {
+        clearTimeout(this.previewRetryTimer);
+        this.previewRetryTimer = null;
       }
 
       await plugin.startPreview({
@@ -283,6 +324,11 @@ class NativeRecorder {
   }
 
   async stopCamera() {
+    if (this.previewRetryTimer !== null) {
+      clearTimeout(this.previewRetryTimer);
+      this.previewRetryTimer = null;
+    }
+
     const plugin = this.getNativeRecorderPlugin();
     if (plugin) {
       try {
@@ -320,6 +366,11 @@ class NativeRecorder {
     if (this.previewSyncFrame !== null) {
       cancelAnimationFrame(this.previewSyncFrame);
       this.previewSyncFrame = null;
+    }
+
+    if (this.previewRetryTimer !== null) {
+      clearTimeout(this.previewRetryTimer);
+      this.previewRetryTimer = null;
     }
 
     void this.stopCamera();
@@ -439,14 +490,15 @@ class NativeRecorder {
       return;
     }
 
-    await this.stopCamera();
-
     for (let i = CONFIG.VIDEO_COUNTDOWN_SECONDS; i > 0; i--) {
       this.countdownEl.textContent = i;
       this.countdownEl.classList.remove("hidden");
+      await this.showNativeCountdown(String(i));
       await this.sleep(1000);
     }
     this.countdownEl.classList.add("hidden");
+    await this.hideNativeCountdown();
+    await this.stopCamera();
 
     this.isRecording = true;
     this.recordBtn.classList.add("recording");
@@ -471,9 +523,11 @@ class NativeRecorder {
       }
     } catch (error) {
       console.error("Native recording failed:", error);
+      await this.hideNativeCountdown();
       showToast("Recording failed. Please try again.", "error");
       this.setRecordingEnabled(true);
     } finally {
+      await this.hideNativeCountdown();
       this.isRecording = false;
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");

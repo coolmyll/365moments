@@ -10,7 +10,10 @@ import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.Gravity
 import android.widget.FrameLayout
+import android.widget.TextView
+import android.util.TypedValue
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.MirrorMode
 import androidx.camera.core.Preview
@@ -55,6 +58,7 @@ class OneSecondRecorderPlugin : Plugin() {
     private var activeVideoCapture: VideoCapture<Recorder>? = null
     private var previewContainer: FrameLayout? = null
     private var previewView: PreviewView? = null
+    private var countdownOverlayView: TextView? = null
     private var pendingStopRunnable: Runnable? = null
     private var currentDeviceRotation = Surface.ROTATION_0
     private var previewCornerRadiusPx = 0f
@@ -141,6 +145,41 @@ class OneSecondRecorderPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun showCountdown(call: PluginCall) {
+        val activity = activity
+        val text = call.getString("text") ?: ""
+        if (activity == null) {
+            call.reject("Activity unavailable")
+            return
+        }
+
+        activity.runOnUiThread {
+            try {
+                ensurePreviewContainer()
+                countdownOverlayView?.text = text
+                countdownOverlayView?.visibility = View.VISIBLE
+                call.resolve(JSObject())
+            } catch (error: Exception) {
+                call.reject("Countdown failed: ${error.message}")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun hideCountdown(call: PluginCall) {
+        val activity = activity
+        if (activity == null) {
+            call.reject("Activity unavailable")
+            return
+        }
+
+        activity.runOnUiThread {
+            countdownOverlayView?.visibility = View.GONE
+            call.resolve(JSObject())
+        }
+    }
+
+    @PluginMethod
     fun record(call: PluginCall) {
         val durationMs = call.getInt("durationMs") ?: DEFAULT_DURATION_MS
         val useFrontCamera = call.getBoolean("useFrontCamera") ?: false
@@ -186,6 +225,8 @@ class OneSecondRecorderPlugin : Plugin() {
             onComplete(IllegalStateException("PreviewView unavailable"))
             return
         }
+
+        localPreviewView.scaleX = 1f
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -259,7 +300,13 @@ class OneSecondRecorderPlugin : Plugin() {
                         .build()
 
                     val videoCapture = VideoCapture.Builder(recorder)
-                        .setMirrorMode(MirrorMode.MIRROR_MODE_OFF)
+                        .setMirrorMode(
+                            if (useFrontCamera) {
+                                MirrorMode.MIRROR_MODE_ON
+                            } else {
+                                MirrorMode.MIRROR_MODE_OFF
+                            },
+                        )
                         .build()
 
                     activeVideoCapture = videoCapture
@@ -380,6 +427,21 @@ class OneSecondRecorderPlugin : Plugin() {
             previewContainer?.addView(previewView)
         }
 
+        if (countdownOverlayView == null) {
+            countdownOverlayView = TextView(activity).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER,
+                )
+                setTextColor(0xFFFFFFFF.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 64f)
+                setShadowLayer(20f, 0f, 0f, 0xCC000000.toInt())
+                visibility = View.GONE
+            }
+            previewContainer?.addView(countdownOverlayView)
+        }
+
         if (previewContainer?.parent == null) {
             rootView.addView(previewContainer)
         }
@@ -421,6 +483,8 @@ class OneSecondRecorderPlugin : Plugin() {
             activeVideoCapture = null
             activeCameraProvider = null
         }
+
+        countdownOverlayView?.visibility = View.GONE
 
         (previewContainer?.parent as? ViewGroup)?.removeView(previewContainer)
     }
