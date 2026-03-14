@@ -18,6 +18,18 @@
   --danger: #dd8f7c;
   --border-subtle: rgba(251, 243, 230, 0.1);
   --shadow-soft: 0 16px 34px rgba(8, 10, 8, 0.2);
+  --ambient-glow-top: rgba(222, 127, 82, 0.16);
+  --ambient-glow-side: rgba(214, 163, 95, 0.12);
+  --shell-top: #202a24;
+  --shell-bottom: #101511;
+  --panel-from: rgba(41, 54, 47, 0.92);
+  --panel-to: rgba(34, 45, 40, 0.86);
+  --header-from: rgba(41, 54, 47, 0.9);
+  --header-to: rgba(34, 45, 40, 0.82);
+  --datebar-from: rgba(41, 54, 47, 0.9);
+  --datebar-to: rgba(35, 46, 41, 0.8);
+  --dropdown-from: rgba(42, 56, 49, 0.98);
+  --dropdown-to: rgba(31, 42, 37, 0.98);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -40,6 +52,18 @@
   --danger: #f09a85;
   --border-subtle: rgba(255, 244, 232, 0.12);
   --shadow-soft: 0 18px 36px rgba(9, 12, 10, 0.22);
+  --ambient-glow-top: rgba(231, 111, 81, 0.2);
+  --ambient-glow-side: rgba(235, 177, 90, 0.16);
+  --shell-top: #294136;
+  --shell-bottom: #131916;
+  --panel-from: rgba(57, 81, 68, 0.94);
+  --panel-to: rgba(39, 55, 47, 0.9);
+  --header-from: rgba(57, 81, 68, 0.92);
+  --header-to: rgba(43, 59, 50, 0.86);
+  --datebar-from: rgba(57, 81, 68, 0.92);
+  --datebar-to: rgba(45, 62, 53, 0.84);
+  --dropdown-from: rgba(63, 88, 74, 0.98);
+  --dropdown-to: rgba(43, 59, 50, 0.98);
 }
 
 :root[data-theme="dark"] {
@@ -56,6 +80,18 @@
   --danger: #d08f87;
   --border-subtle: rgba(237, 242, 238, 0.1);
   --shadow-soft: 0 20px 40px rgba(0, 0, 0, 0.28);
+  --ambient-glow-top: rgba(73, 97, 141, 0.22);
+  --ambient-glow-side: rgba(34, 51, 73, 0.16);
+  --shell-top: #131a19;
+  --shell-bottom: #090d0d;
+  --panel-from: rgba(27, 37, 40, 0.95);
+  --panel-to: rgba(18, 24, 28, 0.9);
+  --header-from: rgba(27, 37, 40, 0.94);
+  --header-to: rgba(18, 24, 28, 0.86);
+  --datebar-from: rgba(29, 40, 43, 0.94);
+  --datebar-to: rgba(19, 26, 30, 0.84);
+  --dropdown-from: rgba(31, 43, 47, 0.98);
+  --dropdown-to: rgba(18, 26, 30, 0.98);
 }
 
 @keyframes surfaceRise {
@@ -145,13 +181,13 @@
 body {
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   background:
-    radial-gradient(circle at top, rgba(222, 127, 82, 0.16), transparent 30%),
+    radial-gradient(circle at top, var(--ambient-glow-top), transparent 30%),
     radial-gradient(
       circle at 82% 16%,
-      rgba(214, 163, 95, 0.12),
+      var(--ambient-glow-side),
       transparent 26%
     ),
-    linear-gradient(180deg, #202a24 0%, var(--bg-primary) 56%, #101511 100%);
+    linear-gradient(180deg, var(--shell-top) 0%, var(--bg-primary) 56%, var(--shell-bottom) 100%);
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
@@ -258,8 +294,8 @@ body {
   max-width: 400px;
   background: linear-gradient(
     180deg,
-    rgba(41, 54, 47, 0.92) 0%,
-    rgba(34, 45, 40, 0.86) 100%
+    var(--panel-from) 0%,
+    var(--panel-to) 100%
   );
   border: 1px solid var(--border-subtle);
   border-radius: 24px;
@@ -342,8 +378,8 @@ header {
   z-index: 260;
   background: linear-gradient(
     180deg,
-    rgba(41, 54, 47, 0.9) 0%,
-    rgba(34, 45, 40, 0.82) 100%
+    var(--header-from) 0%,
+    var(--header-to) 100%
   );
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -450,8 +486,8 @@ header {
   border-radius: 24px;
   background: linear-gradient(
     180deg,
-    rgba(41, 54, 47, 0.9) 0%,
-    rgba(35, 46, 41, 0.8) 100%
+    var(--datebar-from) 0%,
+    var(--datebar-to) 100%
   );
   border: 1px solid rgba(251, 243, 230, 0.06);
   text-align: center;
@@ -2297,8 +2333,8 @@ header {
   max-width: min(280px, calc(100vw - 1rem));
   background: linear-gradient(
     180deg,
-    rgba(42, 56, 49, 0.98) 0%,
-    rgba(31, 42, 37, 0.98) 100%
+    var(--dropdown-from) 0%,
+    var(--dropdown-to) 100%
   );
   border: 1px solid rgba(251, 243, 230, 0.1);
   border-radius: 16px;
@@ -2352,8 +2388,8 @@ header {
 }
 
 .theme-option-btn[aria-pressed="true"] {
-  background: rgba(222, 127, 82, 0.12);
-  border-color: rgba(222, 127, 82, 0.28);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
 .theme-option-swatch {

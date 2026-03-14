@@ -15,7 +15,8 @@ class App {
     this.modalCloseTimers = new Map();
     this.uploadingDelightInterval = null;
     this.themePreference = "warm";
-    this.themeRefreshInterval = null;
+    this.systemThemeMediaQuery = null;
+    this.systemThemeListener = null;
     this.screens = {
       loading: document.getElementById("loading-screen"),
       auth: document.getElementById("auth-screen"),
@@ -433,37 +434,51 @@ class App {
     });
   }
 
-  getSystemThemeForCurrentTime() {
-    const hour = new Date().getHours();
-
-    if (hour >= 6 && hour < 11) {
-      return "warm";
+  supportsSystemTheme() {
+    if (!Platform.isNative() || !window.matchMedia) {
+      return false;
     }
 
-    if (hour >= 11 && hour < 19) {
-      return "color";
+    const prefersDarkScheme = window.matchMedia("(prefers-color-scheme: dark)");
+    return typeof prefersDarkScheme.matches === "boolean";
+  }
+
+  syncThemeOptionVisibility() {
+    const systemThemeOption = document.getElementById("system-theme-option");
+    if (!systemThemeOption) {
+      return;
     }
 
-    return "dark";
+    systemThemeOption.hidden = !this.supportsSystemTheme();
+  }
+
+  getSystemThemeFromDevice() {
+    if (!this.supportsSystemTheme()) {
+      return null;
+    }
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "warm";
   }
 
   getSystemThemeDescription() {
-    const effectiveTheme = this.getSystemThemeForCurrentTime();
-
-    if (effectiveTheme === "warm") {
-      return "Morning warmth right now";
-    }
-
-    if (effectiveTheme === "color") {
-      return "Daytime color right now";
-    }
-
-    return "Night mode right now";
+    const effectiveTheme = this.getSystemThemeFromDevice();
+    return effectiveTheme === "dark"
+      ? "Following your device dark theme"
+      : "Following your device light theme";
   }
 
   initializeThemePreference() {
+    this.syncThemeOptionVisibility();
+
     const savedTheme = localStorage.getItem("themePreference") || "warm";
-    this.setThemePreference(savedTheme, { persist: false });
+    const initialTheme =
+      savedTheme === "system" && !this.supportsSystemTheme() ? "warm" : savedTheme;
+
+    if (savedTheme !== initialTheme) {
+      localStorage.setItem("themePreference", initialTheme);
+    }
+
+    this.setThemePreference(initialTheme, { persist: false });
 
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && this.themePreference === "system") {
@@ -472,35 +487,63 @@ class App {
     });
   }
 
-  startSystemThemeRefresh() {
-    this.stopSystemThemeRefresh();
-    this.themeRefreshInterval = setInterval(() => {
+  startSystemThemeSync() {
+    this.stopSystemThemeSync();
+
+    if (!this.supportsSystemTheme()) {
+      return;
+    }
+
+    this.systemThemeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    this.systemThemeListener = () => {
       if (this.themePreference === "system") {
         this.applyThemePreference();
       }
-    }, 60000);
-  }
+    };
 
-  stopSystemThemeRefresh() {
-    if (this.themeRefreshInterval) {
-      clearInterval(this.themeRefreshInterval);
-      this.themeRefreshInterval = null;
+    if (typeof this.systemThemeMediaQuery.addEventListener === "function") {
+      this.systemThemeMediaQuery.addEventListener("change", this.systemThemeListener);
+      return;
+    }
+
+    if (typeof this.systemThemeMediaQuery.addListener === "function") {
+      this.systemThemeMediaQuery.addListener(this.systemThemeListener);
     }
   }
 
+  stopSystemThemeSync() {
+    if (!this.systemThemeMediaQuery || !this.systemThemeListener) {
+      return;
+    }
+
+    if (typeof this.systemThemeMediaQuery.removeEventListener === "function") {
+      this.systemThemeMediaQuery.removeEventListener("change", this.systemThemeListener);
+    } else if (typeof this.systemThemeMediaQuery.removeListener === "function") {
+      this.systemThemeMediaQuery.removeListener(this.systemThemeListener);
+    }
+
+    this.systemThemeMediaQuery = null;
+    this.systemThemeListener = null;
+  }
+
   applyThemePreference() {
-    const effectiveTheme =
-      this.themePreference === "system"
-        ? this.getSystemThemeForCurrentTime()
-        : this.themePreference;
+    let effectiveTheme = this.themePreference;
+
+    if (this.themePreference === "system") {
+      effectiveTheme = this.getSystemThemeFromDevice();
+      if (!effectiveTheme) {
+        this.stopSystemThemeSync();
+        return;
+      }
+    }
 
     document.documentElement.dataset.theme = effectiveTheme;
     this.updateThemeControls(effectiveTheme);
 
     if (this.themePreference === "system") {
-      this.startSystemThemeRefresh();
+      this.startSystemThemeSync();
     } else {
-      this.stopSystemThemeRefresh();
+      this.stopSystemThemeSync();
     }
   }
 
@@ -516,7 +559,7 @@ class App {
       systemLabel.textContent =
         this.themePreference === "system"
           ? this.getSystemThemeDescription()
-          : "Changes with time of day";
+          : "Follows your device appearance";
     }
 
     document.documentElement.dataset.themeMode = this.themePreference;
@@ -524,7 +567,11 @@ class App {
   }
 
   setThemePreference(themeName, { persist = true } = {}) {
-    const validThemes = new Set(["warm", "color", "dark", "system"]);
+    const validThemes = new Set(["warm", "color", "dark"]);
+    if (this.supportsSystemTheme()) {
+      validThemes.add("system");
+    }
+
     if (!validThemes.has(themeName)) {
       return;
     }
