@@ -75,7 +75,6 @@ class OneSecondRecorderPlugin : Plugin() {
                     in 225 until 315 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
                 }
-                activePreview?.targetRotation = currentDeviceRotation
                 activeVideoCapture?.targetRotation = currentDeviceRotation
             }
         }
@@ -197,7 +196,6 @@ class OneSecondRecorderPlugin : Plugin() {
 
         activity.runOnUiThread {
             try {
-                stopPreviewInternal("record")
                 stopActiveRecording("restart")
                 startRecording(call, durationMs, useFrontCamera)
             } catch (error: Exception) {
@@ -226,7 +224,7 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = 1f
+        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -238,7 +236,7 @@ class OneSecondRecorderPlugin : Plugin() {
                     activeCameraProvider = cameraProvider
 
                     val preview = Preview.Builder()
-                        .setTargetRotation(currentDeviceRotation)
+                        .setTargetRotation(Surface.ROTATION_0)
                         .build().also {
                             it.setSurfaceProvider(localPreviewView.surfaceProvider)
                         }
@@ -282,6 +280,14 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
+        val localPreviewView = previewView
+        if (localPreviewView == null) {
+            call.reject("PreviewView unavailable")
+            return
+        }
+
+        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
+
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
 
@@ -309,6 +315,13 @@ class OneSecondRecorderPlugin : Plugin() {
                         )
                         .build()
 
+                    val preview = Preview.Builder()
+                        .setTargetRotation(Surface.ROTATION_0)
+                        .build().also {
+                            it.setSurfaceProvider(localPreviewView.surfaceProvider)
+                        }
+
+                    activePreview = preview
                     activeVideoCapture = videoCapture
                     videoCapture.targetRotation = currentDeviceRotation
 
@@ -319,7 +332,12 @@ class OneSecondRecorderPlugin : Plugin() {
                     }
 
                     cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(activity, cameraSelector, videoCapture)
+                    cameraProvider.bindToLifecycle(
+                        activity,
+                        cameraSelector,
+                        preview,
+                        videoCapture,
+                    )
 
                     val outputDir = File(context.cacheDir, "recordings")
                     if (!outputDir.exists()) {
@@ -360,6 +378,7 @@ class OneSecondRecorderPlugin : Plugin() {
                                 clearPendingStop()
                                 activeRecording = null
                                 activeVideoCapture = null
+                                activePreview = null
                                 activeCameraProvider?.unbindAll()
                                 activeCameraProvider = null
 
@@ -387,6 +406,7 @@ class OneSecondRecorderPlugin : Plugin() {
                     clearPendingStop()
                     activeRecording = null
                     activeVideoCapture = null
+                    activePreview = null
                     activeCameraProvider?.unbindAll()
                     activeCameraProvider = null
                     Log.e(TAG, "Camera setup failed", error)

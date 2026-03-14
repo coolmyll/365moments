@@ -498,7 +498,6 @@ class NativeRecorder {
     }
     this.countdownEl.classList.add("hidden");
     await this.hideNativeCountdown();
-    await this.stopCamera();
 
     this.isRecording = true;
     this.recordBtn.classList.add("recording");
