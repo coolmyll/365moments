@@ -147,7 +147,7 @@ class NativeRecorder {
         this.orientationBtn.style.display = "none";
       }
 
-      this.cameraContainer?.classList.remove("landscape");
+      this.syncCameraContainerAspect();
 
       this.preview.style.visibility = "hidden";
       this.preview.style.pointerEvents = "none";
@@ -202,6 +202,15 @@ class NativeRecorder {
       borderRadius,
       pixelRatio: window.devicePixelRatio || 1,
     };
+  }
+
+  syncCameraContainerAspect() {
+    if (!this.cameraContainer) {
+      return;
+    }
+
+    const isLandscape = window.innerWidth > window.innerHeight;
+    this.cameraContainer.classList.toggle("landscape", isLandscape);
   }
 
   schedulePreviewSync() {
@@ -262,6 +271,8 @@ class NativeRecorder {
   }
 
   async startCamera(facingMode = this.currentFacingMode) {
+    this.syncCameraContainerAspect();
+
     const plugin = this.getNativeRecorderPlugin();
     if (plugin) {
       const bounds = this.getPreviewBounds();
@@ -354,6 +365,7 @@ class NativeRecorder {
     }
 
     try {
+      this.syncCameraContainerAspect();
       await this.startCamera();
       this.updateRecordingState(false);
     } catch (error) {
@@ -432,7 +444,10 @@ class NativeRecorder {
   }
 
   setupVisibilityHandling() {
-    const syncPreview = () => this.schedulePreviewSync();
+    const syncPreview = () => {
+      this.syncCameraContainerAspect();
+      this.schedulePreviewSync();
+    };
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
@@ -440,6 +455,7 @@ class NativeRecorder {
           void this.stopCamera();
         }
       } else if (!this.isRecording && !this.isDayRecorded()) {
+        this.syncCameraContainerAspect();
         void this.resumePreview();
       }
     });

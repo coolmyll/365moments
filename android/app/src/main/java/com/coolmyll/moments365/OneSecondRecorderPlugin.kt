@@ -75,6 +75,7 @@ class OneSecondRecorderPlugin : Plugin() {
                     in 225 until 315 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
                 }
+                activePreview?.targetRotation = getPreviewRotation()
                 activeVideoCapture?.targetRotation = currentDeviceRotation
             }
         }
@@ -224,7 +225,8 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
+        localPreviewView.scaleX = 1f
+        localPreviewView.rotationY = if (useFrontCamera) 180f else 0f
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -236,7 +238,7 @@ class OneSecondRecorderPlugin : Plugin() {
                     activeCameraProvider = cameraProvider
 
                     val preview = Preview.Builder()
-                        .setTargetRotation(Surface.ROTATION_0)
+                        .setTargetRotation(getPreviewRotation())
                         .build().also {
                             it.setSurfaceProvider(localPreviewView.surfaceProvider)
                         }
@@ -286,7 +288,8 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
+        localPreviewView.scaleX = 1f
+        localPreviewView.rotationY = if (useFrontCamera) 180f else 0f
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -316,7 +319,7 @@ class OneSecondRecorderPlugin : Plugin() {
                         .build()
 
                     val preview = Preview.Builder()
-                        .setTargetRotation(Surface.ROTATION_0)
+                        .setTargetRotation(getPreviewRotation())
                         .build().also {
                             it.setSurfaceProvider(localPreviewView.surfaceProvider)
                         }
@@ -377,10 +380,7 @@ class OneSecondRecorderPlugin : Plugin() {
                             is VideoRecordEvent.Finalize -> {
                                 clearPendingStop()
                                 activeRecording = null
-                                activeVideoCapture = null
-                                activePreview = null
-                                activeCameraProvider?.unbindAll()
-                                activeCameraProvider = null
+                                stopPreviewInternal("finalize")
 
                                 if (videoRecordEvent.hasError()) {
                                     Log.e(TAG, "Recording error: ${videoRecordEvent.cause}")
@@ -484,6 +484,12 @@ class OneSecondRecorderPlugin : Plugin() {
         layoutParams.topMargin = topPx
         container.layoutParams = layoutParams
         container.invalidateOutline()
+        activePreview?.targetRotation = getPreviewRotation()
+        activeVideoCapture?.targetRotation = currentDeviceRotation
+    }
+
+    private fun getPreviewRotation(): Int {
+        return activity?.display?.rotation ?: Surface.ROTATION_0
     }
 
     private fun clearPendingStop() {
