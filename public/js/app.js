@@ -14,6 +14,8 @@ class App {
     this.pendingConfirmation = null;
     this.modalCloseTimers = new Map();
     this.uploadingDelightInterval = null;
+    this.themePreference = "warm";
+    this.themeRefreshInterval = null;
     this.screens = {
       loading: document.getElementById("loading-screen"),
       auth: document.getElementById("auth-screen"),
@@ -23,6 +25,8 @@ class App {
   }
 
   async init() {
+    this.initializeThemePreference();
+
     // Show loading screen
     this.showScreen("loading");
     this.updateLoadingSubtext();
@@ -160,6 +164,15 @@ class App {
 
     document.addEventListener("keydown", (e) => {
       this.handleGlobalKeydown(e);
+    });
+
+    document.getElementById("theme-option-list")?.addEventListener("click", (e) => {
+      const themeButton = e.target.closest("[data-theme-option]");
+      if (!themeButton) {
+        return;
+      }
+
+      this.setThemePreference(themeButton.dataset.themeOption);
     });
 
     // Signout
@@ -418,6 +431,110 @@ class App {
     document.getElementById("submit-upload").addEventListener("click", () => {
       this.submitUpload();
     });
+  }
+
+  getSystemThemeForCurrentTime() {
+    const hour = new Date().getHours();
+
+    if (hour >= 6 && hour < 11) {
+      return "warm";
+    }
+
+    if (hour >= 11 && hour < 19) {
+      return "color";
+    }
+
+    return "dark";
+  }
+
+  getSystemThemeDescription() {
+    const effectiveTheme = this.getSystemThemeForCurrentTime();
+
+    if (effectiveTheme === "warm") {
+      return "Morning warmth right now";
+    }
+
+    if (effectiveTheme === "color") {
+      return "Daytime color right now";
+    }
+
+    return "Night mode right now";
+  }
+
+  initializeThemePreference() {
+    const savedTheme = localStorage.getItem("themePreference") || "warm";
+    this.setThemePreference(savedTheme, { persist: false });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && this.themePreference === "system") {
+        this.applyThemePreference();
+      }
+    });
+  }
+
+  startSystemThemeRefresh() {
+    this.stopSystemThemeRefresh();
+    this.themeRefreshInterval = setInterval(() => {
+      if (this.themePreference === "system") {
+        this.applyThemePreference();
+      }
+    }, 60000);
+  }
+
+  stopSystemThemeRefresh() {
+    if (this.themeRefreshInterval) {
+      clearInterval(this.themeRefreshInterval);
+      this.themeRefreshInterval = null;
+    }
+  }
+
+  applyThemePreference() {
+    const effectiveTheme =
+      this.themePreference === "system"
+        ? this.getSystemThemeForCurrentTime()
+        : this.themePreference;
+
+    document.documentElement.dataset.theme = effectiveTheme;
+    this.updateThemeControls(effectiveTheme);
+
+    if (this.themePreference === "system") {
+      this.startSystemThemeRefresh();
+    } else {
+      this.stopSystemThemeRefresh();
+    }
+  }
+
+  updateThemeControls(effectiveTheme) {
+    document.querySelectorAll("[data-theme-option]").forEach((button) => {
+      const isSelected = button.dataset.themeOption === this.themePreference;
+      button.setAttribute("aria-pressed", String(isSelected));
+      button.classList.toggle("active", isSelected);
+    });
+
+    const systemLabel = document.getElementById("system-theme-label");
+    if (systemLabel) {
+      systemLabel.textContent =
+        this.themePreference === "system"
+          ? this.getSystemThemeDescription()
+          : "Changes with time of day";
+    }
+
+    document.documentElement.dataset.themeMode = this.themePreference;
+    document.documentElement.dataset.effectiveTheme = effectiveTheme;
+  }
+
+  setThemePreference(themeName, { persist = true } = {}) {
+    const validThemes = new Set(["warm", "color", "dark", "system"]);
+    if (!validThemes.has(themeName)) {
+      return;
+    }
+
+    this.themePreference = themeName;
+    if (persist) {
+      localStorage.setItem("themePreference", themeName);
+    }
+
+    this.applyThemePreference();
   }
 
   async handleSignIn() {

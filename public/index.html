@@ -10,7 +10,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&family=Space+Grotesk:wght@400;500;600;700&display=swap"
     />
-    <link rel="stylesheet" href="/styles.css?v=24" />
+    <link rel="stylesheet" href="/styles.css?v=25" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#17201c" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
@@ -100,6 +100,62 @@
 
           <!-- Profile Dropdown -->
           <div id="profile-dropdown" class="profile-dropdown hidden">
+            <div class="dropdown-theme-group" aria-label="Theme selection">
+              <p class="dropdown-group-label">Theme</p>
+              <div class="theme-option-list" id="theme-option-list">
+                <button
+                  type="button"
+                  class="theme-option-btn"
+                  data-theme-option="warm"
+                  aria-pressed="false"
+                >
+                  <span class="theme-option-swatch theme-swatch-warm"></span>
+                  <span class="theme-option-copy">
+                    <span class="theme-option-title">Warm</span>
+                    <span class="theme-option-subtitle">Current reflective look</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="theme-option-btn"
+                  data-theme-option="color"
+                  aria-pressed="false"
+                >
+                  <span class="theme-option-swatch theme-swatch-color"></span>
+                  <span class="theme-option-copy">
+                    <span class="theme-option-title">Color</span>
+                    <span class="theme-option-subtitle">Brighter daytime palette</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="theme-option-btn"
+                  data-theme-option="dark"
+                  aria-pressed="false"
+                >
+                  <span class="theme-option-swatch theme-swatch-dark"></span>
+                  <span class="theme-option-copy">
+                    <span class="theme-option-title">Dark</span>
+                    <span class="theme-option-subtitle">Moodier night palette</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="theme-option-btn"
+                  data-theme-option="system"
+                  aria-pressed="false"
+                >
+                  <span class="theme-option-swatch theme-swatch-system"></span>
+                  <span class="theme-option-copy">
+                    <span class="theme-option-title">System</span>
+                    <span class="theme-option-subtitle" id="system-theme-label"
+                      >Changes with time of day</span
+                    >
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div class="dropdown-divider"></div>
             <button id="settings-btn" class="dropdown-item">
               <span class="material-symbols-rounded">notifications</span>
               Reminders
