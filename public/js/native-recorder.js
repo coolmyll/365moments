@@ -427,14 +427,19 @@ class NativeRecorder {
       this.isRecording = false;
       this.recordBtn.classList.remove("recording");
       this.recordingIndicator.classList.add("hidden");
-      // Restart WebView preview (CameraX may have taken over the camera)
-      try {
-        await this.startCamera();
-      } catch (error) {
-        console.error(
-          "Failed to restart preview after native recording:",
-          error,
-        );
+      const shouldResumePreview = !this.isDayRecorded() && !document.hidden;
+
+      if (shouldResumePreview) {
+        try {
+          await this.startCamera();
+        } catch (error) {
+          console.error(
+            "Failed to restart preview after native recording:",
+            error,
+          );
+        }
+      } else {
+        this.stopCamera();
       }
     }
   }
@@ -505,7 +510,10 @@ class NativeRecorder {
       const ext = blob.type.includes("mp4") ? ".mp4" : ".webm";
       const fileName = `${targetDate}${ext}`;
 
-      const result = await API.uploadClip(blob, fileName);
+      const result = await API.uploadClip(blob, fileName, {
+        captureSource: "native-android",
+        captureOrientation: this.currentOrientation,
+      });
 
       if (typeof app !== "undefined" && app.stopUploadingDelight) {
         app.stopUploadingDelight("Your one-second keepsake is ready.");
@@ -515,6 +523,7 @@ class NativeRecorder {
         `Moment saved for ${CONFIG.formatDateStringForDisplay(targetDate)}!`,
         "success",
       );
+      await this.sleep(950);
 
       this.clipsCache.set(targetDate, result.file);
       this.targetDate = null;

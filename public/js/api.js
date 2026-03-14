@@ -43,10 +43,15 @@ const API = {
   },
 
   // Upload a video clip
-  async uploadClip(blob, fileName) {
+  async uploadClip(blob, fileName, extraFields = {}) {
     const formData = new FormData();
     formData.append("video", blob, fileName);
     formData.append("fileName", fileName);
+    Object.entries(extraFields).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        formData.append(key, String(value));
+      }
+    });
 
     const response = await fetch("/api/clips", {
       method: "POST",
@@ -139,4 +144,3 @@ const API = {
 };
 // Export for global use
 window.API = API;
-

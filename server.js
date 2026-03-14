@@ -979,6 +979,16 @@ app.post(
     // Use unique ID to prevent conflicts between concurrent uploads
     const uniqueId = crypto.randomUUID();
     const isUploadMp4 = req.file.mimetype === "video/mp4";
+    const captureSource =
+      typeof req.body.captureSource === "string"
+        ? req.body.captureSource
+        : null;
+    const captureOrientation =
+      req.body.captureOrientation === "portrait" ||
+      req.body.captureOrientation === "landscape"
+        ? req.body.captureOrientation
+        : null;
+    const normalizeNativeAndroidUpload = captureSource === "native-android";
     const inputPath = path.join(TEMP_DIR, `input-${uniqueId}${inputExt}`);
     const outputPath = path.join(TEMP_DIR, `output-${uniqueId}.mp4`);
 
@@ -987,7 +997,10 @@ app.post(
       fs.writeFileSync(inputPath, req.file.buffer);
 
       // Check if already H.264 MP4 — skip conversion if so
-      const alreadyMp4 = isUploadMp4 && probeIsH264Mp4(inputPath);
+      const alreadyMp4 =
+        isUploadMp4 &&
+        probeIsH264Mp4(inputPath) &&
+        !normalizeNativeAndroidUpload;
 
       const finalVideoPath = alreadyMp4 ? inputPath : outputPath;
 
@@ -999,9 +1012,9 @@ app.post(
       } else {
         // Convert to MP4 using FFmpeg
         await new Promise((resolve, reject) => {
-          const args = [
-            "-i",
-            inputPath,
+          const args = ["-i", inputPath];
+
+          args.push(
             "-c:v",
             "libx264",
             "-preset",
@@ -1016,10 +1029,16 @@ app.post(
             "+faststart",
             "-y",
             outputPath,
-          ];
+          );
 
           logInfo("clips.upload.ffmpeg.started", {
-            ...buildLogContext(req, { userId: userEmail, userName }),
+            ...buildLogContext(req, {
+              userId: userEmail,
+              userName,
+              captureSource,
+              captureOrientation,
+              normalizeNativeAndroidUpload,
+            }),
             ffmpegPath,
           });
           const ffmpegProcess = spawn(ffmpegPath, args);

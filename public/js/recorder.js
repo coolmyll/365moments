@@ -417,6 +417,7 @@ class VideoRecorder {
       }
       celebrateMomentSaved(".camera-container");
       showToast(`Moment saved for ${dateDisplay}!`, "success");
+      await this.sleep(950);
 
       // Update cache
       this.clipsCache.set(targetDate, result.file);
