@@ -980,6 +980,38 @@ class App {
     }
   }
 
+  animateCountUp(element, end, duration = 1500) {
+    if (element.dataset.targetVal === String(end)) return;
+    element.dataset.targetVal = end;
+
+    const startVal = parseInt(element.textContent) || 0;
+    if (startVal === end) {
+      element.textContent = end;
+      return;
+    }
+
+    let startTimestamp = null;
+    const step = (timestamp) => {
+      // Abort if target changed mid-animation
+      if (element.dataset.targetVal !== String(end)) return;
+
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      // easeOutQuart
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
+      const currentVal = Math.floor(startVal + easeProgress * (end - startVal));
+
+      element.textContent = currentVal;
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        element.textContent = end;
+      }
+    };
+    window.requestAnimationFrame(step);
+  }
+
   updateStreakDisplay() {
     const streak = this.calculateStreak();
     const streakDisplay = document.getElementById("streak-display");
@@ -988,7 +1020,7 @@ class App {
 
     if (streak > 0) {
       streakDisplay.classList.remove("hidden");
-      streakCount.textContent = streak;
+      this.animateCountUp(streakCount, streak);
 
       // Get motivational message based on streak
       const message = this.getStreakMessage(streak);
@@ -1068,9 +1100,11 @@ class App {
 
     // Update stats - count unique dates only
     const uniqueDates = new Set(this.clips.map((c) => c.date).filter(Boolean));
-    document.getElementById("total-clips").textContent = uniqueDates.size;
-    document.getElementById("current-streak").textContent =
-      this.calculateStreak();
+    const totalClipsEl = document.getElementById("total-clips");
+    const currentStreakEl = document.getElementById("current-streak");
+
+    this.animateCountUp(totalClipsEl, uniqueDates.size);
+    this.animateCountUp(currentStreakEl, this.calculateStreak());
 
     // Render calendar
     const calendarView = document.getElementById("calendar-view");
