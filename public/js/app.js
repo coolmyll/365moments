@@ -152,13 +152,24 @@ class App {
       profileDropdown.classList.toggle("hidden");
       chevron.classList.toggle("open", !isOpen);
       userInfoBtn.setAttribute("aria-expanded", String(!isOpen));
+
+      if (isOpen) {
+        void this.resumeMainPreview();
+      } else {
+        void this.pauseMainPreview();
+      }
     });
 
     // Close dropdown when clicking outside
     document.addEventListener("click", () => {
+      const wasOpen = !profileDropdown.classList.contains("hidden");
       profileDropdown.classList.add("hidden");
       chevron.classList.remove("open");
       userInfoBtn.setAttribute("aria-expanded", "false");
+
+      if (wasOpen) {
+        void this.resumeMainPreview();
+      }
     });
     profileDropdown.addEventListener("click", (e) => e.stopPropagation());
 
@@ -241,10 +252,6 @@ class App {
 
     // Navigation
     document.getElementById("gallery-btn").addEventListener("click", () => {
-      // Stop camera when going to gallery
-      if (this.recorder) {
-        this.recorder.stopCamera();
-      }
       this.showScreen("gallery");
       this.renderGallery();
     });
@@ -259,10 +266,6 @@ class App {
 
     document.getElementById("back-btn").addEventListener("click", async () => {
       this.showScreen("main");
-      // Resume camera preview after returning from gallery
-      if (this.recorder) {
-        await this.recorder.resumePreview();
-      }
     });
 
     document.getElementById("calendar-view").addEventListener("click", (e) => {
@@ -644,13 +647,6 @@ class App {
     // Show main screen
     this.showScreen("main");
 
-    if (this.recorder?.resumePreview) {
-      await new Promise((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
-      });
-      await this.recorder.resumePreview();
-    }
-
     // Scroll to top after everything is loaded (mobile browsers preserve scroll position)
     setTimeout(() => window.scrollTo(0, 0), 100);
 
@@ -702,6 +698,8 @@ class App {
   openModal(modalId, preferredSelector = null) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
+
+    void this.pauseMainPreview();
 
     const existingTimer = this.modalCloseTimers.get(modalId);
     if (existingTimer) {
@@ -761,6 +759,7 @@ class App {
       }
 
       this.modalCloseTimers.delete(modalId);
+      void this.resumeMainPreview();
     }, 180);
 
     this.modalCloseTimers.set(modalId, closeTimer);
@@ -866,6 +865,46 @@ class App {
     this.screens[screenName].classList.add("active");
     document.body.dataset.activeScreen = screenName;
     window.scrollTo(0, 0);
+
+    if (screenName === "main") {
+      void this.resumeMainPreview();
+    } else {
+      void this.pauseMainPreview();
+    }
+  }
+
+  isMainPreviewAvailable() {
+    const dropdown = document.getElementById("profile-dropdown");
+    return Boolean(
+      this.recorder?.resumePreview &&
+      this.screens.main?.classList.contains("active") &&
+      !this.activeModalId &&
+      (dropdown?.classList.contains("hidden") ?? true),
+    );
+  }
+
+  async pauseMainPreview() {
+    if (!this.recorder?.stopCamera) {
+      return;
+    }
+
+    await this.recorder.stopCamera();
+  }
+
+  async resumeMainPreview() {
+    if (!this.isMainPreviewAvailable()) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+
+    if (!this.isMainPreviewAvailable()) {
+      return;
+    }
+
+    await this.recorder.resumePreview();
   }
 
   setupBackButton() {
@@ -892,9 +931,6 @@ class App {
       // Navigate back from gallery to main
       if (this.screens.gallery.classList.contains("active")) {
         this.showScreen("main");
-        if (this.recorder) {
-          await this.recorder.resumePreview();
-        }
         return;
       }
 

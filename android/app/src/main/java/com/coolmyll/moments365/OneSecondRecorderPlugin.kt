@@ -61,6 +61,7 @@ class OneSecondRecorderPlugin : Plugin() {
     private var countdownOverlayView: TextView? = null
     private var pendingStopRunnable: Runnable? = null
     private var currentDeviceRotation = Surface.ROTATION_0
+    private var activeUseFrontCamera = false
     private var previewCornerRadiusPx = 0f
     private var orientationEventListener: OrientationEventListener? = null
 
@@ -197,7 +198,9 @@ class OneSecondRecorderPlugin : Plugin() {
 
         activity.runOnUiThread {
             try {
-                stopActiveRecording("restart")
+                if (activeRecording != null) {
+                    stopActiveRecording("restart")
+                }
                 startRecording(call, durationMs, useFrontCamera)
             } catch (error: Exception) {
                 Log.e(TAG, "Failed to start recording", error)
@@ -225,8 +228,8 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
-        localPreviewView.rotationY = 0f
+        activeUseFrontCamera = useFrontCamera
+        applyPreviewTransform(localPreviewView)
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -254,6 +257,7 @@ class OneSecondRecorderPlugin : Plugin() {
 
                     activePreview = preview
                     activeVideoCapture = null
+                    applyPreviewTransform(localPreviewView)
                     onComplete(null)
                 } catch (error: Exception) {
                     activePreview = null
@@ -288,8 +292,8 @@ class OneSecondRecorderPlugin : Plugin() {
             return
         }
 
-        localPreviewView.scaleX = if (useFrontCamera) -1f else 1f
-        localPreviewView.rotationY = 0f
+        activeUseFrontCamera = useFrontCamera
+        applyPreviewTransform(localPreviewView)
 
         val cameraProviderFuture: ListenableFuture<ProcessCameraProvider> =
             ProcessCameraProvider.getInstance(context)
@@ -341,6 +345,7 @@ class OneSecondRecorderPlugin : Plugin() {
                         preview,
                         videoCapture,
                     )
+                    applyPreviewTransform(localPreviewView)
 
                     val outputDir = File(context.cacheDir, "recordings")
                     if (!outputDir.exists()) {
@@ -447,6 +452,8 @@ class OneSecondRecorderPlugin : Plugin() {
             previewContainer?.addView(previewView)
         }
 
+        applyPreviewTransform(previewView)
+
         if (countdownOverlayView == null) {
             countdownOverlayView = TextView(activity).apply {
                 layoutParams = FrameLayout.LayoutParams(
@@ -484,8 +491,15 @@ class OneSecondRecorderPlugin : Plugin() {
         layoutParams.topMargin = topPx
         container.layoutParams = layoutParams
         container.invalidateOutline()
+        applyPreviewTransform(previewView)
         activePreview?.targetRotation = getPreviewRotation()
         activeVideoCapture?.targetRotation = currentDeviceRotation
+    }
+
+    private fun applyPreviewTransform(view: PreviewView?) {
+        view ?: return
+        view.scaleX = if (activeUseFrontCamera) -1f else 1f
+        view.rotationY = 0f
     }
 
     private fun getPreviewRotation(): Int {
@@ -508,6 +522,7 @@ class OneSecondRecorderPlugin : Plugin() {
             activePreview = null
             activeVideoCapture = null
             activeCameraProvider = null
+            activeUseFrontCamera = false
         }
 
         countdownOverlayView?.visibility = View.GONE
