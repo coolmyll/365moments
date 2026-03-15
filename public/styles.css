@@ -743,11 +743,26 @@ header {
 
 /* Controls */
 .controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
   gap: 2rem;
   padding: 1rem;
+  width: 100%;
+}
+
+#switch-camera-btn {
+  justify-self: end;
+}
+
+#record-btn {
+  grid-column: 2;
+  justify-self: center;
+}
+
+#orientation-btn,
+#gallery-btn-bottom {
+  justify-self: start;
 }
 
 .control-btn {

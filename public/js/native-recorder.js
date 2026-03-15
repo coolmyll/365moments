@@ -147,6 +147,14 @@ class NativeRecorder {
         this.orientationBtn.style.display = "none";
       }
 
+      // Move gallery button to the controls area on Android
+      const headerGalleryBtn = document.getElementById("gallery-btn");
+      const bottomGalleryBtn = document.getElementById("gallery-btn-bottom");
+      if (headerGalleryBtn && bottomGalleryBtn) {
+        headerGalleryBtn.style.display = "none";
+        bottomGalleryBtn.style.display = "flex";
+      }
+
       this.syncCameraContainerAspect();
 
       this.preview.style.visibility = "hidden";

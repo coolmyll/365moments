@@ -498,7 +498,7 @@ class OneSecondRecorderPlugin : Plugin() {
 
     private fun applyPreviewTransform(view: PreviewView?) {
         view ?: return
-        view.scaleX = if (activeUseFrontCamera) -1f else 1f
+        view.scaleX = 1f
         view.rotationY = 0f
     }
 

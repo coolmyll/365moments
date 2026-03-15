@@ -251,9 +251,11 @@ class App {
     }
 
     // Navigation
-    document.getElementById("gallery-btn").addEventListener("click", () => {
-      this.showScreen("gallery");
-      this.renderGallery();
+    document.querySelectorAll(".gallery-toggle-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.showScreen("gallery");
+        this.renderGallery();
+      });
     });
 
     // Go to gallery button in camera-off overlay
